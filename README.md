@@ -40,6 +40,20 @@ An unofficial effort to statically recompile the Xbox 360 version of **Rayman Or
 | 6 | Native renderer (no GPU emulation) | ✅ Done: 60 fps on a Galaxy S23, true widescreen, movies. [docs/NATIVE_RENDERER.md](docs/NATIVE_RENDERER.md) |
 | 7 | Performance and more phones | ✅ Levels at 60 fps at full resolution on the S23 (were 43–46), 60 fps on a Galaxy A56 (Exynos, Xclipse GPU), plain Vulkan 1.1 support. [docs/ANDROID_PERFORMANCE.md](docs/ANDROID_PERFORMANCE.md) |
 
+## Nintendo Switch
+
+A Nintendo Switch port is being developed on the `switch` branch using **devkitA64 + libnx**. The port is intended to reuse the existing ARM64 recompiled code and native Vulkan renderer rather than introduce a separate game implementation.
+
+Switch-specific research and the living port checklist are documented in:
+
+- [docs/SWITCH_PORT.md](docs/SWITCH_PORT.md)
+- [docs/SWITCH_RESEARCH.md](docs/SWITCH_RESEARCH.md)
+- [docs/SWITCH_MEMORY.md](docs/SWITCH_MEMORY.md)
+- [docs/SWITCH_RENDERER.md](docs/SWITCH_RENDERER.md)
+- [docs/SWITCH_STATUS.md](docs/SWITCH_STATUS.md)
+
+The Switch port is currently in the build-system/runtime groundwork stage. It is not yet a playable Switch build.
+
 ## Roadmap
 
 1. ~~**Native renderer.**~~ ✅ Done: the game's draws go straight to Vulkan, with shaders converted ahead of time by XenosRecomp.
