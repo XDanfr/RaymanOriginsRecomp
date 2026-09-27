@@ -2,6 +2,7 @@
 <resources>
     <string name="settings_title">Configurações</string>
     <string name="controls_visible">Mostrar controles na tela</string>
+    <string name="run_toggle">Botão de correr: toque para ligar/desligar</string>
     <string name="controls_opacity">Opacidade dos controles</string>
     <string name="controls_size">Tamanho dos controles</string>
     <string name="fill_screen">Preencher a tela inteira (esticado)</string>

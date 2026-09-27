@@ -1,0 +1,400 @@
+From 520ba7636a9fbd29a887da7c8f19c9cccd1f10a1 Mon Sep 17 00:00:00 2001
+From: Antigravity Tear <belmante@antigravity.io>
+Date: Sun, 27 Sep 2026 12:46:13 -0400
+Subject: [PATCH] filesystem: PackedDevice reads the game from a compact pack
+ (game.rdpk)
+
+A compact pack holds the game's files deduplicated: every distinct run of
+bytes is stored once and each file is a list of extents into that store
+(tools/make_compact_pack.py in RaymanOriginsRecomp). The files read back
+byte for byte as the originals, from a memory-mapped pack.
+
+SetupVfs mounts it when the game folder has a game.rdpk with the RDPK magic,
+and the host folder otherwise. The entry XEX check accepts the pack too.
+---
+ .../rex/filesystem/devices/packed_device.h    | 112 +++++++++++
+ src/filesystem/CMakeLists.txt                 |   1 +
+ src/filesystem/devices/packed_device.cpp      | 186 ++++++++++++++++++
+ src/system/runtime.cpp                        |  17 +-
+ src/ui/rex_app.cpp                            |   4 +-
+ 5 files changed, 315 insertions(+), 5 deletions(-)
+ create mode 100644 include/rex/filesystem/devices/packed_device.h
+ create mode 100644 src/filesystem/devices/packed_device.cpp
+
+diff --git a/include/rex/filesystem/devices/packed_device.h b/include/rex/filesystem/devices/packed_device.h
+new file mode 100644
+index 0000000..2cef55d
+--- /dev/null
++++ b/include/rex/filesystem/devices/packed_device.h
+@@ -0,0 +1,112 @@
++/**
++ * @file        rex/filesystem/devices/packed_device.h
++ * @brief       Read-only device serving a game folder from a deduplicated pack
++ *
++ * An RDPK pack (tools/make_compact_pack.py in the Rayman Origins port) stores
++ * each piece of content once, and describes every original file as a list of
++ * extents into that store. The device memory-maps the pack and serves the
++ * files byte for byte as they were, so a game whose bundles repeat the same
++ * assets takes a fraction of the space.
++ *
++ * Format (little-endian): 'RDPK', u32 version (1), u32 file count, u32
++ * reserved, u64 table offset, u64 table size, u64 store offset, u64 store
++ * size; the table holds per file u16 path length, UTF-8 path ('/'), u64 size,
++ * u32 extent count, then {u64 file offset, u64 length, u64 pack offset} per
++ * extent, sorted and covering the file.
++ */
++
++#pragma once
++
++#include <memory>
++#include <span>
++#include <string>
++#include <vector>
++
++#include <rex/filesystem/device.h>
++#include <rex/filesystem/entry.h>
++#include <rex/filesystem/file.h>
++#include <rex/memory/mapped_memory.h>
++
++namespace rex::filesystem {
++
++class PackedDevice : public Device {
++ public:
++  PackedDevice(const std::string_view mount_path, const std::filesystem::path& host_path);
++  ~PackedDevice() override;
++
++  bool Initialize() override;
++  void Dump(string::StringBuffer* string_buffer) override;
++  Entry* ResolvePath(const std::string_view path) override;
++
++  const std::string& name() const override { return name_; }
++  uint32_t attributes() const override { return 0; }
++  uint32_t component_name_max_length() const override { return 255; }
++  uint32_t total_allocation_units() const override {
++    return uint32_t(total_size_ / sectors_per_allocation_unit() / bytes_per_sector());
++  }
++  uint32_t available_allocation_units() const override { return 0; }
++  uint32_t sectors_per_allocation_unit() const override { return 1; }
++  uint32_t bytes_per_sector() const override { return 0x200; }
++
++  // True if `path` is an RDPK pack.
++  static bool IsPack(const std::filesystem::path& path);
++
++ private:
++  std::string name_;
++  std::filesystem::path host_path_;
++  std::unique_ptr<Entry> root_entry_;
++  std::unique_ptr<memory::MappedMemory> mmap_;
++  uint64_t file_count_ = 0;
++  uint64_t total_size_ = 0;
++};
++
++class PackedEntry : public Entry {
++ public:
++  struct Extent {
++    uint64_t file_offset, length, pack_offset;
++  };
++
++  PackedEntry(Device* device, Entry* parent, const std::string_view path, memory::MappedMemory* mmap);
++  ~PackedEntry() override;
++
++  memory::MappedMemory* mmap() const { return mmap_; }
++  const std::vector<Extent>& extents() const { return extents_; }
++
++  X_STATUS Open(uint32_t desired_access, File** out_file) override;
++
++  // Contiguous files (one extent) map straight out of the pack.
++  bool can_map() const override { return extents_.size() == 1; }
++  std::unique_ptr<memory::MappedMemory> OpenMapped(memory::MappedMemory::Mode mode, size_t offset,
++                                                   size_t length) override;
++
++ private:
++  friend class PackedDevice;
++
++  memory::MappedMemory* mmap_;
++  std::vector<Extent> extents_;
++};
++
++class PackedFile : public File {
++ public:
++  PackedFile(uint32_t file_access, PackedEntry* entry);
++  ~PackedFile() override;
++
++  void Destroy() override;
++
++  X_STATUS ReadSync(std::span<uint8_t> buffer, size_t byte_offset, size_t* out_bytes_read) override;
++  X_STATUS WriteSync(std::span<const uint8_t> buffer, size_t byte_offset, size_t* out_bytes_written) override {
++    (void)buffer;
++    (void)byte_offset;
++    (void)out_bytes_written;
++    return X_STATUS_ACCESS_DENIED;
++  }
++  X_STATUS SetLength(size_t length) override {
++    (void)length;
++    return X_STATUS_ACCESS_DENIED;
++  }
++
++ private:
++  PackedEntry* entry_;
++};
++
++}  // namespace rex::filesystem
+diff --git a/src/filesystem/CMakeLists.txt b/src/filesystem/CMakeLists.txt
+index 577e4c9..cdbc7db 100644
+--- a/src/filesystem/CMakeLists.txt
++++ b/src/filesystem/CMakeLists.txt
+@@ -11,6 +11,7 @@ add_library(rexfilesystem OBJECT
+     devices/null_device.cpp
+     devices/null_entry.cpp
+     devices/null_file.cpp
++    devices/packed_device.cpp
+     devices/stfs_container_device.cpp
+     devices/stfs_container_entry.cpp
+     devices/stfs_container_file.cpp
+diff --git a/src/filesystem/devices/packed_device.cpp b/src/filesystem/devices/packed_device.cpp
+new file mode 100644
+index 0000000..48416f1
+--- /dev/null
++++ b/src/filesystem/devices/packed_device.cpp
+@@ -0,0 +1,186 @@
++/**
++ * @file        filesystem/devices/packed_device.cpp
++ * @brief       Read-only device serving a game folder from a deduplicated pack
++ */
++
++#include <rex/filesystem/devices/packed_device.h>
++
++#include <algorithm>
++#include <cstring>
++#include <fstream>
++
++#include <rex/logging.h>
++#include <rex/math.h>
++#include <rex/string/utf8.h>
++
++namespace rex::filesystem {
++
++namespace {
++constexpr size_t kHeaderSize = 48;
++constexpr uint64_t kTimestamp = 10000 * 11644473600000LL;
++
++template <typename T>
++T Get(const uint8_t* p) {
++  T v;
++  std::memcpy(&v, p, sizeof(T));  // the pack is little-endian, as are the hosts
++  return v;
++}
++}  // namespace
++
++// ---- Device ----
++
++PackedDevice::PackedDevice(const std::string_view mount_path, const std::filesystem::path& host_path)
++    : Device(mount_path), name_("RDPK"), host_path_(host_path) {}
++
++PackedDevice::~PackedDevice() = default;
++
++bool PackedDevice::IsPack(const std::filesystem::path& path) {
++  std::ifstream f(path, std::ios::binary);
++  char magic[4] = {};
++  return f.read(magic, 4) && std::memcmp(magic, "RDPK", 4) == 0;
++}
++
++bool PackedDevice::Initialize() {
++  mmap_ = memory::MappedMemory::Open(host_path_, memory::MappedMemory::Mode::kRead);
++  if (!mmap_ || mmap_->size() < kHeaderSize || std::memcmp(mmap_->data(), "RDPK", 4) != 0) {
++    REXFS_ERROR("Game pack {} could not be mapped or is not an RDPK pack", host_path_.string());
++    return false;
++  }
++  const uint8_t* base = mmap_->data();
++  const size_t size = mmap_->size();
++  uint32_t version = Get<uint32_t>(base + 4), count = Get<uint32_t>(base + 8);
++  uint64_t table_offset = Get<uint64_t>(base + 16), table_size = Get<uint64_t>(base + 24);
++  if (version != 1 || table_offset > size || table_size > size - table_offset) {
++    REXFS_ERROR("Game pack {}: unsupported version {} or damaged table", host_path_.string(), version);
++    return false;
++  }
++
++  auto root = std::make_unique<PackedEntry>(this, nullptr, "", mmap_.get());
++  root->attributes_ = kFileAttributeDirectory;
++  const uint8_t* p = base + table_offset;
++  const uint8_t* end = p + table_size;
++  for (uint32_t i = 0; i < count; ++i) {
++    if (end - p < 2) return false;
++    uint16_t name_length = Get<uint16_t>(p);
++    p += 2;
++    if (end - p < name_length + 12) return false;
++    std::string_view rel(reinterpret_cast<const char*>(p), name_length);
++    p += name_length;
++    uint64_t file_size = Get<uint64_t>(p);
++    uint32_t extent_count = Get<uint32_t>(p + 8);
++    p += 12;
++    if (uint64_t(end - p) < uint64_t(extent_count) * 24) return false;
++
++    // Directories along the path, created as needed.
++    Entry* parent = root.get();
++    auto parts = rex::string::utf8_split_path(rel);
++    if (parts.empty()) {
++      p += size_t(extent_count) * 24;
++      continue;
++    }
++    for (size_t c = 0; c + 1 < parts.size(); ++c) {
++      Entry* dir = parent->GetChild(parts[c]);
++      if (!dir) {
++        auto made = std::make_unique<PackedEntry>(this, parent,
++                                                  rex::string::utf8_join_guest_paths(parent->path(), parts[c]),
++                                                  mmap_.get());
++        made->attributes_ = kFileAttributeDirectory;
++        made->create_timestamp_ = made->access_timestamp_ = made->write_timestamp_ = kTimestamp;
++        dir = made.get();
++        static_cast<PackedEntry*>(parent)->children_.emplace_back(std::move(made));
++      }
++      parent = dir;
++    }
++
++    auto file = std::make_unique<PackedEntry>(this, parent,
++                                              rex::string::utf8_join_guest_paths(parent->path(), parts.back()),
++                                              mmap_.get());
++    file->attributes_ = kFileAttributeReadOnly;
++    file->size_ = file_size;
++    file->allocation_size_ = rex::round_up(file_size, uint64_t(bytes_per_sector()));
++    file->create_timestamp_ = file->access_timestamp_ = file->write_timestamp_ = kTimestamp;
++    file->extents_.reserve(extent_count);
++    uint64_t covered = 0;
++    for (uint32_t e = 0; e < extent_count; ++e, p += 24) {
++      PackedEntry::Extent x{Get<uint64_t>(p), Get<uint64_t>(p + 8), Get<uint64_t>(p + 16)};
++      if (x.file_offset != covered || x.pack_offset > size || x.length > size - x.pack_offset) {
++        REXFS_ERROR("Game pack {}: damaged extents for {}", host_path_.string(), rel);
++        return false;
++      }
++      covered += x.length;
++      file->extents_.push_back(x);
++    }
++    if (covered != file_size) {
++      REXFS_ERROR("Game pack {}: extents of {} cover {} of {} bytes", host_path_.string(), rel, covered, file_size);
++      return false;
++    }
++    total_size_ += file_size;
++    ++file_count_;
++    static_cast<PackedEntry*>(parent)->children_.emplace_back(std::move(file));
++  }
++  root_entry_ = std::move(root);
++  REXFS_INFO("Game pack {}: {} files, {} bytes served from {} bytes", host_path_.string(), file_count_,
++             total_size_, size);
++  return true;
++}
++
++void PackedDevice::Dump(string::StringBuffer* string_buffer) {
++  auto global_lock = global_critical_region_.Acquire();
++  string_buffer->AppendFormat("{}: {} files, {} bytes from pack {}\n", mount_path(), file_count_, total_size_,
++                              host_path_.string());
++}
++
++Entry* PackedDevice::ResolvePath(const std::string_view path) { return root_entry_->ResolvePath(path); }
++
++// ---- Entry ----
++
++PackedEntry::PackedEntry(Device* device, Entry* parent, const std::string_view path, memory::MappedMemory* mmap)
++    : Entry(device, parent, path), mmap_(mmap) {}
++
++PackedEntry::~PackedEntry() = default;
++
++X_STATUS PackedEntry::Open(uint32_t desired_access, File** out_file) {
++  *out_file = new PackedFile(desired_access, this);
++  return X_STATUS_SUCCESS;
++}
++
++std::unique_ptr<memory::MappedMemory> PackedEntry::OpenMapped(memory::MappedMemory::Mode mode, size_t offset,
++                                                             size_t length) {
++  if (mode != memory::MappedMemory::Mode::kRead || extents_.size() != 1 || offset > size_) {
++    return nullptr;
++  }
++  size_t real_length = length ? std::min<size_t>(length, size_ - offset) : size_ - offset;
++  return mmap_->Slice(extents_[0].pack_offset + offset, real_length);
++}
++
++// ---- File ----
++
++PackedFile::PackedFile(uint32_t file_access, PackedEntry* entry) : File(file_access, entry), entry_(entry) {}
++
++PackedFile::~PackedFile() = default;
++
++void PackedFile::Destroy() { delete this; }
++
++X_STATUS PackedFile::ReadSync(std::span<uint8_t> buffer, size_t byte_offset, size_t* out_bytes_read) {
++  if (byte_offset >= entry_->size()) {
++    return X_STATUS_END_OF_FILE;
++  }
++  const auto& extents = entry_->extents();
++  // First extent that ends after byte_offset.
++  auto it = std::upper_bound(extents.begin(), extents.end(), uint64_t(byte_offset),
++                             [](uint64_t off, const PackedEntry::Extent& e) { return off < e.file_offset + e.length; });
++  const uint8_t* base = entry_->mmap()->data();
++  size_t done = 0, want = std::min<size_t>(buffer.size(), entry_->size() - byte_offset);
++  size_t pos = byte_offset;
++  for (; it != extents.end() && done < want; ++it) {
++    size_t inside = pos - it->file_offset;
++    size_t n = std::min<size_t>(it->length - inside, want - done);
++    std::memcpy(buffer.data() + done, base + it->pack_offset + inside, n);
++    done += n;
++    pos += n;
++  }
++  *out_bytes_read = done;
++  return X_STATUS_SUCCESS;
++}
++
++}  // namespace rex::filesystem
+diff --git a/src/system/runtime.cpp b/src/system/runtime.cpp
+index c10694c..9ed78bc 100644
+--- a/src/system/runtime.cpp
++++ b/src/system/runtime.cpp
+@@ -12,6 +12,7 @@
+ #include <rex/chrono/clock.h>
+ #include <rex/cvar.h>
+ #include <rex/filesystem/devices/host_path_device.h>
++#include <rex/filesystem/devices/packed_device.h>
+ #include <rex/filesystem/devices/null_device.h>
+ #include <rex/filesystem/vfs.h>
+ #include <rex/logging.h>
+@@ -303,12 +304,20 @@ bool Runtime::SetupVfs() {
+     return false;
+   }
+ 
+-  // Mount game_data_root as \Device\Harddisk0\Partition1
++  // Mount game_data_root as \Device\Harddisk0\Partition1: from a deduplicated
++  // game pack (game.rdpk in the folder) when there is one, else the folder.
+   auto mount_path = "\\Device\\Harddisk0\\Partition1";
+-  auto device = std::make_unique<rex::filesystem::HostPathDevice>(
+-      mount_path, abs_game_root, !REXCVAR_GET(allow_game_relative_writes));
++  std::unique_ptr<rex::filesystem::Device> device;
++  auto pack = abs_game_root / "game.rdpk";
++  if (std::filesystem::is_regular_file(pack) && rex::filesystem::PackedDevice::IsPack(pack)) {
++    device = std::make_unique<rex::filesystem::PackedDevice>(mount_path, pack);
++    REXSYS_INFO("  Game files from pack {}", pack.string());
++  } else {
++    device = std::make_unique<rex::filesystem::HostPathDevice>(
++        mount_path, abs_game_root, !REXCVAR_GET(allow_game_relative_writes));
++  }
+   if (!device->Initialize()) {
+-    REXSYS_ERROR("Runtime::SetupVfs: Failed to initialize host path device");
++    REXSYS_ERROR("Runtime::SetupVfs: Failed to initialize the game device");
+     return false;
+   }
+   if (!file_system_->RegisterDevice(std::move(device))) {
+diff --git a/src/ui/rex_app.cpp b/src/ui/rex_app.cpp
+index b94fe9e..7ae8583 100644
+--- a/src/ui/rex_app.cpp
++++ b/src/ui/rex_app.cpp
+@@ -275,7 +275,9 @@ bool ReXApp::ConstructRuntime(const PathConfig& paths) {
+     std::string host_tail{tail};
+     std::replace(host_tail.begin(), host_tail.end(), '\\', '/');
+     auto xex_host = paths.game_data_root / host_tail;
+-    if (!std::filesystem::is_regular_file(xex_host)) {
++    // A game pack (game.rdpk, see Runtime::SetupVfs) serves the XEX itself.
++    if (!std::filesystem::is_regular_file(xex_host) &&
++        !std::filesystem::is_regular_file(paths.game_data_root / "game.rdpk")) {
+       auto msg = fmt::format("Entrypoint XEX not found: {}", xex_host.string());
+       REXLOG_ERROR("{}", msg);
+       rex::ShowSimpleMessageBox(rex::SimpleMessageBoxType::Error, msg);
+-- 
+2.47.1.windows.1
+

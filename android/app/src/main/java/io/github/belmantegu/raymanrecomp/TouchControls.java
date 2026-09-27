@@ -16,7 +16,8 @@ import android.view.View;
  * On-screen Xbox 360 controller for Rayman Origins, drawn over the game.
  *
  * Left side: a floating analog stick (it re-centers where the thumb lands).
- * Right side: jump (A, hold to glide), attack (X), back (B) and run (RT).
+ * Right side: jump (A, hold to glide), attack (X), back (B) and run (RT; by
+ * default a tap starts running and the next tap stops, KEY_RUN_TOGGLE).
  * Top: select (Back), pause (Start) and the app settings.
  * Button art: res/drawable-nodpi (docs/TOUCH_BUTTONS.md, GamePad/).
  *
@@ -36,6 +37,8 @@ public class TouchControls extends View {
     static final String KEY_OPACITY = "opacity";   // 10..100
     static final String KEY_SCALE = "scale";       // 60..150
     static final String KEY_FILL = "fill_screen";
+    // Run (RT) latches: one tap starts running, the next one stops.
+    static final String KEY_RUN_TOGGLE = "run_toggle";
 
     static native void nativeSetEnabled(boolean enabled);
     static native void nativeSetState(int buttons, float leftX, float leftY, float rightTrigger);
@@ -91,6 +94,7 @@ public class TouchControls extends View {
     private int stickPointer = -1;
     private int pressed;         // bitmask of SDL buttons
     private boolean rtPressed;
+    private boolean runLatched;  // toggle mode: running until tapped again
 
     public TouchControls(Context context) {
         super(context);
@@ -292,6 +296,9 @@ public class TouchControls extends View {
             // A finger may slide from one button straight onto a neighbour;
             // once it is off every button it goes inert until lifted.
             if (b != null && b.id != BTN_SETTINGS) {
+                if (b.id == BTN_RT && current != b) {
+                    runLatched = !runLatched;  // a finger reaching run: a tap
+                }
                 next.put(id, b);
             } else {
                 next.put(id, NOTHING);
@@ -335,6 +342,7 @@ public class TouchControls extends View {
     /** Lets go of everything: on cancel, focus loss, pause and settings. */
     void releaseAll() {
         pointers.clear();
+        runLatched = false;
         stickPointer = -1;
         publish();
         invalidate();
@@ -359,6 +367,11 @@ public class TouchControls extends View {
                     mask |= 1 << b.id;
                 }
             }
+        }
+        if (prefs.getBoolean(KEY_RUN_TOGGLE, true)) {
+            rt = runLatched;
+        } else {
+            runLatched = false;
         }
         pressed = mask;
         rtPressed = rt;
