@@ -106,6 +106,10 @@ Graphics still go through the Xenos emulation, and performance hasn't been measu
 
 The Galaxy A56 (Exynos 1580) has no Adreno GPU: its Samsung **Xclipse 540** is based on AMD's RDNA architecture, with Samsung's own Vulkan driver. The game runs very well on it with nothing specific to it: the first level at **60 fps**, correct picture, and the renderer never waits for the GPU (two frames in flight). It is the first non-Snapdragon phone the port has run on. Details in [ANDROID_PERFORMANCE.md](ANDROID_PERFORMANCE.md#beyond-adreno-galaxy-a56-exynos-1580-xclipse-540).
 
+## Also tested: Redmi 10C (low end, Vulkan 1.1)
+
+The Redmi 10C (Snapdragon 680, Adreno 610, 4 GB of RAM, Android 13) runs the game with the native renderer. Its GPU driver only offers Vulkan 1.1 with 4 descriptor sets and no descriptor indexing, which the renderer's plain Vulkan 1.1 path covers. Its frame rate hasn't been measured yet; **Settings → Resolution** is there for it.
+
 ## Performance
 
 [ANDROID_PERFORMANCE.md](ANDROID_PERFORMANCE.md) has the profiling pass on the Galaxy S23 and the Redmi 10C: what cost the frame rate, how it was measured and what fixed it. Levels went from 43–46 to 60 fps at full resolution. **Settings → Resolution** (50–100%) lowers the render resolution for weaker GPUs.
