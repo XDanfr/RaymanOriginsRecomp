@@ -131,6 +131,12 @@ public class RaymanActivity extends SDLActivity implements TouchControls.Setting
             // runtime's UI loop spun on a whole core. The sentinel only matters
             // to SDL_PollEvent loops; turn it off (docs/ANDROID_PERFORMANCE.md).
             Os.setenv("SDL_POLL_SENTINEL", "0", true);
+            // Frame dumps: adb creates captures/dump_now here (native_capture.cpp).
+            Os.setenv("RAYMAN_CAPTURE_DIR", getExternalFilesDir(null).getPath(), true);
+            // Diagnostic: logs the vertex layouts D3D fills into the shaders.
+            if (new File(getExternalFilesDir(null), "fetch_log").exists()) {
+                Os.setenv("RAYMAN_NATIVE_FETCH_LOG", "1", true);
+            }
             if (nativeRenderer(prefs)) {
                 Os.setenv("RAYMAN_NATIVE_RENDER", "main", true);
                 Os.setenv("RAYMAN_NATIVE_SPIRV", new File(getExternalFilesDir(null), "spirv").getPath(), true);
@@ -188,6 +194,11 @@ public class RaymanActivity extends SDLActivity implements TouchControls.Setting
         visible.setChecked(prefs.getBoolean(TouchControls.KEY_VISIBLE, true));
         box.addView(visible);
 
+        final CheckBox runToggle = new CheckBox(this);
+        runToggle.setText(R.string.run_toggle);
+        runToggle.setChecked(prefs.getBoolean(TouchControls.KEY_RUN_TOGGLE, true));
+        box.addView(runToggle);
+
         final SeekBar opacity = addSlider(box, R.string.controls_opacity,
             prefs.getInt(TouchControls.KEY_OPACITY, 55) - 10, 90);
         final SeekBar size = addSlider(box, R.string.controls_size,
@@ -238,6 +249,7 @@ public class RaymanActivity extends SDLActivity implements TouchControls.Setting
             .setPositiveButton(android.R.string.ok, (dialog, which) -> {
                 prefs.edit()
                     .putBoolean(TouchControls.KEY_VISIBLE, visible.isChecked())
+                    .putBoolean(TouchControls.KEY_RUN_TOGGLE, runToggle.isChecked())
                     .putInt(TouchControls.KEY_OPACITY, opacity.getProgress() + 10)
                     .putInt(TouchControls.KEY_SCALE, size.getProgress() + 60)
                     .putBoolean(TouchControls.KEY_FILL, fill.isChecked())

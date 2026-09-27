@@ -62,7 +62,7 @@ import java.util.zip.ZipInputStream;
  * private/launcher): assets/launcher/logo.png, bg.mp4, background.jpg.
  */
 public class LauncherActivity extends Activity {
-    private static final int PICK_FOLDER = 1, PICK_ZIP = 2, PICK_SAVES = 3;
+    private static final int PICK_FOLDER = 1, PICK_ZIP = 2, PICK_SAVES = 3, EXPORT_SAVES = 4;
 
     // Theme: the game's options menu.
     private static final int PLANK = 0xFF7D1710, PLANK_TOP = 0xFF8A1B12, PLANK_BOTTOM = 0xFF6C130D, PLANK_RIM = 0xFFA3301C;
@@ -95,8 +95,13 @@ public class LauncherActivity extends Activity {
     // ReXGlue's user data root: $HOME/.local/share/rayman, HOME = internal files dir.
     private File saveDir() { return new File(getFilesDir(), ".local/share/rayman"); }
 
+    // The Compact app keeps the whole game in one deduplicated pack, read by the
+    // runtime as the original files (tools/make_compact_pack.py).
+    private File packFile() { return new File(gameDir(), "game.rdpk"); }
+
     private boolean gameReady() {
-        return new File(gameDir(), "default.xex").isFile() && new File(gameDir(), "bootsequence_X360.ipk").isFile();
+        return packFile().isFile()
+                || (new File(gameDir(), "default.xex").isFile() && new File(gameDir(), "bootsequence_X360.ipk").isFile());
     }
 
     /** Set when the home screen is opened from the in-game settings. */
@@ -138,7 +143,7 @@ public class LauncherActivity extends Activity {
         menu.setOrientation(LinearLayout.VERTICAL);
         menu.setBackground(new ShapeDrawable(PLANK_SHAPE, PLANK_TOP, PLANK, PLANK_BOTTOM, PLANK_RIM, true));
         menu.setPadding(px(1.2f), px(1.2f), px(1.2f), px(1.5f));
-        String[][] items = {{"Play", ""}, {"Options", ""}, {"Game files", ".zip"}, {"Quit", ""}};
+        String[][] items = {{"Play", ""}, {"Options", ""}, {"Game files", BuildConfig.COMPACT ? ".rdpk" : ".zip"}, {"Quit", ""}};
         for (int i = 0; i < items.length; ++i) {
             MenuButton b = new MenuButton(items[i][0], items[i][1]);
             final int index = i;
@@ -520,7 +525,8 @@ public class LauncherActivity extends Activity {
             {"touch", "Touch controls", null},
             {"opacity", "Controls opacity", null},
             {"folder", "Game folder", "Import from a folder instead"},
-            {"saves", "Import saves", null},
+            {"backup", "Back up saves", "Your progress as a .zip, anywhere"},
+            {"restore", "Restore saves", "From a backup .zip (also from the other app)"},
         };
         for (String[] s : spec) {
             OptionRow r = new OptionRow(s[0], s[1], s[2]);
@@ -577,7 +583,8 @@ public class LauncherActivity extends Activity {
                 break;
             }
             case "folder": pick(PICK_FOLDER); return;
-            case "saves": pick(PICK_SAVES); return;
+            case "backup": backUpSaves(); return;
+            case "restore": pick(PICK_SAVES); return;
         }
         e.apply();
         paintOptions();
@@ -708,10 +715,14 @@ public class LauncherActivity extends Activity {
         boolean ready = gameReady();
         stateText.setText(ready ? "✓  Game ready" : "Game files not found");
         stateText.setTextColor(ready ? READY : MISSING);
-        metaText.setText(ready ? "Xbox 360 • Retail" : "Game files → import your game pack (.zip)");
+        metaText.setText(ready ? "Xbox 360 • Retail" : BuildConfig.COMPACT
+                ? "Game files → import your compact pack (.rdpk)" : "Game files → import your game pack (.zip)");
         progressLine.set(-1);
         buttons.get(0).setAlpha(ready ? 1f : .55f);
-        if (ready) {
+        if (ready && packFile().isFile()) {
+            metaText.setText(String.format(java.util.Locale.US, "Xbox 360 • Retail • compact pack • %.2f GB",
+                    packFile().length() / 1073741824.0));
+        } else if (ready) {
             new Thread(() -> {
                 long[] totals = new long[2];
                 tally(gameDir(), totals);
@@ -752,6 +763,11 @@ public class LauncherActivity extends Activity {
         if (request == PICK_ZIP) {
             intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
+            // A .rdpk has no MIME type of its own: let the player pick any file.
+            intent.setType(BuildConfig.COMPACT ? "*/*" : "application/zip");
+        } else if (request == PICK_SAVES) {
+            intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
             intent.setType("application/zip");
         } else {
             intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
@@ -764,17 +780,31 @@ public class LauncherActivity extends Activity {
         super.onActivityResult(request, result, data);
         if (result != RESULT_OK || data == null || data.getData() == null) return;
         Uri uri = data.getData();
+        if (request == EXPORT_SAVES) {
+            runSaves("Backing up saves…", () -> zipSaves(uri), "Saves backed up");
+            return;
+        }
+        if (request == PICK_SAVES) {
+            new AlertDialog.Builder(this)
+                    .setMessage("Replace the saves in this app with the ones in the backup? The current progress will be lost.")
+                    .setPositiveButton("Restore", (d, w) -> runSaves("Restoring saves…", () -> restoreSaves(uri),
+                            "Saves restored: close and reopen the game"))
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .show();
+            return;
+        }
         busy = true;
         showOptions(false);
         stateText.setTextColor(CREAM);
-        stateText.setText(request == PICK_SAVES ? "Importing saves…" : "Copying game files…");
+        stateText.setText("Copying game files…");
         metaText.setText("");
         progressLine.set(0);
         new Thread(() -> {
             String error = null;
             try {
-                if (request == PICK_ZIP) unzip(uri, gameDir());
-                else copyTree(uri, request == PICK_SAVES ? saveDir() : gameDir());
+                if (request == PICK_ZIP && isPack(uri)) copyPack(uri);
+                else if (request == PICK_ZIP) unzip(uri, gameDir());
+                else copyTree(uri, gameDir());
             } catch (Exception e) {
                 error = e.getMessage();
             }
@@ -785,14 +815,12 @@ public class LauncherActivity extends Activity {
                 if (message != null) {
                     new AlertDialog.Builder(this).setMessage("Import failed: " + message)
                             .setPositiveButton(android.R.string.ok, null).show();
-                } else if (request != PICK_SAVES && !gameReady()) {
+                } else if (!gameReady()) {
                     new AlertDialog.Builder(this)
                             .setMessage("default.xex or bootsequence_X360.ipk not found. Pick the game pack (.zip) or the folder that contains the game's files.")
                             .setPositiveButton(android.R.string.ok, null).show();
-                } else if (request != PICK_SAVES) {
-                    startGame();  // game files in place: straight into the game
                 } else {
-                    say("Saves imported");
+                    startGame();  // game files in place: straight into the game
                 }
             });
         }).start();
@@ -800,6 +828,128 @@ public class LauncherActivity extends Activity {
 
     private void setStatus(String s) {
         runOnUiThread(() -> metaText.setText(s));
+    }
+
+    // ---- Saves: back up to a .zip, restore from one ----
+
+    private interface SaveTask {
+        void run() throws IOException;
+    }
+
+    private void backUpSaves() {
+        File[] saves = saveDir().listFiles();
+        if (saves == null || saves.length == 0) {
+            say("No saves yet: play first");
+            return;
+        }
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("application/zip");
+        String date = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(new java.util.Date());
+        intent.putExtra(Intent.EXTRA_TITLE, "RaymanOrigins-saves-" + date + ".zip");
+        startActivityForResult(intent, EXPORT_SAVES);
+    }
+
+    private void runSaves(String working, SaveTask task, String done) {
+        busy = true;
+        showOptions(false);
+        stateText.setTextColor(CREAM);
+        stateText.setText(working);
+        metaText.setText("");
+        progressLine.set(-1);
+        new Thread(() -> {
+            String error = null;
+            try {
+                task.run();
+            } catch (Exception e) {
+                error = e.getMessage();
+            }
+            final String message = error;
+            runOnUiThread(() -> {
+                busy = false;
+                refresh();
+                if (message != null) {
+                    new AlertDialog.Builder(this).setMessage("Saves: " + message)
+                            .setPositiveButton(android.R.string.ok, null).show();
+                } else {
+                    say(done);
+                }
+            });
+        }).start();
+    }
+
+    private void zipSaves(Uri uri) throws IOException {
+        OutputStream raw = getContentResolver().openOutputStream(uri);
+        if (raw == null) throw new IOException("cannot write the backup");
+        try (java.util.zip.ZipOutputStream zip = new java.util.zip.ZipOutputStream(raw)) {
+            zipDir(saveDir(), "", zip);
+        }
+    }
+
+    private static void zipDir(File dir, String prefix, java.util.zip.ZipOutputStream zip) throws IOException {
+        File[] files = dir.listFiles();
+        if (files == null) return;
+        for (File f : files) {
+            String name = prefix + f.getName();
+            if (f.isDirectory()) {
+                zip.putNextEntry(new ZipEntry(name + "/"));
+                zip.closeEntry();
+                zipDir(f, name + "/", zip);
+            } else {
+                zip.putNextEntry(new ZipEntry(name));
+                try (InputStream in = new java.io.FileInputStream(f)) {
+                    copy(in, zip);
+                }
+                zip.closeEntry();
+            }
+        }
+    }
+
+    // Extracts the backup next to the saves, then swaps it in: a failure midway
+    // leaves the current saves untouched.
+    private void restoreSaves(Uri uri) throws IOException {
+        File saves = saveDir(), parent = saves.getParentFile();
+        File incoming = new File(parent, "rayman.restore"), old = new File(parent, "rayman.old");
+        deleteTree(incoming);
+        deleteTree(old);
+        int files = 0;
+        try (ZipInputStream in = new ZipInputStream(getContentResolver().openInputStream(uri))) {
+            ZipEntry e;
+            while ((e = in.getNextEntry()) != null) {
+                String name = e.getName();
+                if (name.contains("..") || name.startsWith("/")) continue;
+                File out = new File(incoming, name);
+                if (e.isDirectory()) { out.mkdirs(); continue; }
+                out.getParentFile().mkdirs();
+                try (OutputStream o = new FileOutputStream(out)) {
+                    copy(in, o);
+                }
+                ++files;
+            }
+        } catch (IOException e) {
+            deleteTree(incoming);
+            throw e;
+        }
+        if (files == 0) {
+            deleteTree(incoming);
+            throw new IOException("the backup has no saves in it");
+        }
+        parent.mkdirs();
+        if (saves.exists() && !saves.renameTo(old)) {
+            deleteTree(incoming);
+            throw new IOException("cannot move the current saves aside");
+        }
+        if (!incoming.renameTo(saves)) {
+            old.renameTo(saves);  // put the current saves back
+            throw new IOException("cannot put the backup in place");
+        }
+        deleteTree(old);
+    }
+
+    private static void deleteTree(File f) {
+        File[] children = f.listFiles();
+        if (children != null) for (File c : children) deleteTree(c);
+        f.delete();
     }
 
     // Copies a document tree (the folder the player picked) into `dest`.
@@ -828,6 +978,50 @@ public class LauncherActivity extends Activity {
                 }
             }
         }
+    }
+
+    // A compact game pack starts with "RDPK".
+    private boolean isPack(Uri uri) throws IOException {
+        try (InputStream in = getContentResolver().openInputStream(uri)) {
+            byte[] magic = new byte[4];
+            return in != null && in.read(magic) == 4 && new String(magic, "US-ASCII").equals("RDPK");
+        }
+    }
+
+    // Copies the compact pack to game/game.rdpk (under a temporary name first).
+    private void copyPack(Uri uri) throws IOException {
+        long size = 0;
+        try (android.database.Cursor c = getContentResolver().query(
+                uri, new String[] {android.provider.OpenableColumns.SIZE}, null, null, null)) {
+            if (c != null && c.moveToFirst() && !c.isNull(0)) size = c.getLong(0);
+        }
+        File dir = gameDir();
+        dir.mkdirs();
+        if (size > dir.getUsableSpace()) {
+            throw new IOException("not enough free space: " + (size >> 20) + " MB needed, "
+                    + (dir.getUsableSpace() >> 20) + " MB free");
+        }
+        File tmp = new File(dir, "game.rdpk.part");
+        final long total = size;
+        try (InputStream in = getContentResolver().openInputStream(uri); OutputStream out = new FileOutputStream(tmp)) {
+            byte[] buf = new byte[1 << 20];
+            long done = 0;
+            int n, step = 0;
+            while ((n = in.read(buf)) > 0) {
+                out.write(buf, 0, n);
+                done += n;
+                if (++step % 16 == 0 || done == total) {
+                    final float fraction = total > 0 ? Math.min(1f, (float) done / total) : 0;
+                    final String line = "Copying the pack…  " + (done >> 20) + " / " + (total >> 20) + " MB  ("
+                            + Math.round(fraction * 100) + "%)";
+                    runOnUiThread(() -> {
+                        metaText.setText(line);
+                        progressLine.set(fraction);
+                    });
+                }
+            }
+        }
+        if (!tmp.renameTo(packFile())) throw new IOException("cannot write " + packFile());
     }
 
     private void unzip(Uri zip, File dest) throws IOException {
