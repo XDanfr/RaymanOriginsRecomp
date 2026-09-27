@@ -38,7 +38,8 @@ An unofficial effort to statically recompile the Xbox 360 version of **Rayman Or
 | 4 | Graphics, audio, input | ✅ Via [ReXGlue](https://github.com/rexglue/rexglue-sdk) (Vulkan/MoltenVK), GPU emulated |
 | 5 | Android (NDK, Vulkan, touch/gamepad) | ✅ Runs on a Galaxy S23: [docs/ANDROID.md](docs/ANDROID.md) |
 | 6 | Native renderer (no GPU emulation) | ✅ Done: 60 fps on a Galaxy S23, true widescreen, movies. [docs/NATIVE_RENDERER.md](docs/NATIVE_RENDERER.md) |
-| 7 | Performance and more phones | ✅ Levels at 60 fps at full resolution on the S23 (were 43–46), 60 fps on a Galaxy A56 (Exynos, Xclipse GPU), plain Vulkan 1.1 support. [docs/ANDROID_PERFORMANCE.md](docs/ANDROID_PERFORMANCE.md) |
+| 7 | Performance and more phones | ✅ Levels at 60 fps at full resolution on the S23 (were 43–46), 60 fps on a Galaxy A56 (Exynos, Xclipse GPU), runs on the low-end Redmi 10C (Adreno 610, Vulkan 1.1). [docs/ANDROID_PERFORMANCE.md](docs/ANDROID_PERFORMANCE.md) |
+| 8 | Compact game pack | ✅ The game's 5.4 GB in a lossless 1.1 GB pack, for a separate Compact app. [docs/ANDROID.md](docs/ANDROID.md#compact-app-for-personal-use) |
 
 ## Nintendo Switch
 
@@ -58,10 +59,10 @@ The Switch port is currently in the build-system/runtime groundwork stage. It is
 
 1. ~~**Native renderer.**~~ ✅ Done: the game's draws go straight to Vulkan, with shaders converted ahead of time by XenosRecomp.
 2. ~~**True widescreen.**~~ ✅ Done: a 19.5:9 phone shows more of the level instead of stretching.
-3. **Native renderer gaps.** Render-to-texture passes and vertex formats not seen yet.
+3. **Native renderer gaps.** Water refraction (render-to-texture) and the curved "frieze" strips (the sky bridge, the map's vines) now render; more may turn up in later worlds.
 4. ~~**Performance on phones.**~~ ✅ Done: profiled and fixed on the Galaxy S23, runs on Exynos (Galaxy A56), Vulkan 1.1 path for Adreno 6xx.
 5. ~~**Home screen and game import.**~~ ✅ Done: a home screen in the game's own style ([docs/PORT_HOME.md](docs/PORT_HOME.md)) and one-file game pack import.
-6. **Low-end phones.** Run on the Redmi 10C (Adreno 610, Vulkan 1.1); texture decoding off the game thread.
+6. **Low-end phones.** ✅ Runs on the Redmi 10C (Adreno 610, Vulkan 1.1). Next: measure it, and move texture decoding off the game thread.
 
 Technical write-up of every step, including the bugs found along the way: [docs/PROGRESS.md](docs/PROGRESS.md).
 

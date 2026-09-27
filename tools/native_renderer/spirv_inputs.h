@@ -44,12 +44,17 @@ inline std::vector<uint32_t> VertexInputLocations(const std::vector<uint32_t>& c
 // offset plus that member's size. XenosRecomp declares only the constant
 // registers a shader reads, so this is usually far below the 4 KB the block
 // can hold. Returns 0 when the shader has no block there, and `fallback` when
-// the layout can't be worked out.
+// the layout can't be worked out, or when the shader indexes the block with a
+// computed index (relative constant addressing, c[a0 + n]): XenosRecomp sizes
+// those arrays by the registers the microcode names, but the index can run
+// past them (the map's vines index c145.. up to c224), so the whole register
+// file has to be there, as on the console.
 inline uint32_t UniformBlockBytes(const std::vector<uint32_t>& code, uint32_t set, uint32_t binding,
                                   uint32_t fallback) {
   enum : uint32_t {
     OpTypeInt = 21, OpTypeFloat = 22, OpTypeVector = 23, OpTypeMatrix = 24, OpTypeArray = 28, OpTypeStruct = 30,
-    OpTypePointer = 32, OpConstant = 43, OpVariable = 59, OpDecorate = 71, OpMemberDecorate = 72,
+    OpTypePointer = 32, OpConstant = 43, OpVariable = 59, OpAccessChain = 65, OpDecorate = 71,
+    OpMemberDecorate = 72,
     DecArrayStride = 6, DecMatrixStride = 7, DecBinding = 33, DecDescriptorSet = 34, DecOffset = 35,
   };
   std::unordered_map<uint32_t, uint32_t> setOf, bindingOf, pointee, constant, arrayStride, matrixStride;
@@ -57,6 +62,7 @@ inline uint32_t UniformBlockBytes(const std::vector<uint32_t>& code, uint32_t se
   std::unordered_map<uint64_t, uint32_t> memberOffset;                        // struct << 32 | member
   std::unordered_map<uint32_t, uint32_t> scalarBytes, vectorOf, vectorCount, arrayElem, arrayLength, matrixCols, matrixCol;
   std::vector<std::pair<uint32_t, uint32_t>> variables;  // (pointer type, id)
+  std::vector<std::vector<uint32_t>> chains;             // OpAccessChain: base, indices...
   for (size_t i = 5; i < code.size();) {
     uint32_t op = code[i] & 0xFFFF, n = code[i] >> 16;
     if (!n || i + n > code.size()) return fallback;
@@ -80,6 +86,7 @@ inline uint32_t UniformBlockBytes(const std::vector<uint32_t>& code, uint32_t se
       case OpTypePointer: pointee[w[1]] = w[3]; break;
       case OpConstant: if (n >= 4) constant[w[2]] = w[3]; break;
       case OpVariable: variables.push_back({w[1], w[2]}); break;
+      case OpAccessChain: if (n >= 5) chains.emplace_back(w + 3, w + n); break;
     }
     i += n;
   }
@@ -111,6 +118,10 @@ inline uint32_t UniformBlockBytes(const std::vector<uint32_t>& code, uint32_t se
     if (!setOf.count(var) || setOf[var] != set || bindingOf[var] != binding) continue;
     auto p = pointee.find(ptr);
     if (p == pointee.end()) return fallback;
+    for (const auto& chain : chains)
+      if (chain[0] == var)
+        for (size_t k = 1; k < chain.size(); ++k)
+          if (!constant.count(chain[k])) return fallback;  // computed index
     uint32_t bytes = size(p->second);
     return bytes ? std::min(fallback, (bytes + 15) & ~15u) : fallback;
   }

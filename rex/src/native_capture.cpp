@@ -112,6 +112,57 @@ uint64_t ShaderHash(uint32_t object) {
 
 void DumpDraw(int entry, const PPCContext& ctx);
 
+// Diagnostic (RAYMAN_NATIVE_FETCH_LOG): the vertex layout D3D really uses.
+// XenosRecomp shaders come from the container, whose vertex fetches have
+// offset, format and stride zeroed: D3D fills them in per vertex declaration
+// ("bindings": vs + [vs + 896 + 8i], microcode at [binding + 872] + [vs + 32],
+// sub_826E9B28). Logs each binding's fetches once per vertex shader and stride.
+void LogVertexFetches(uint32_t device) {
+  static const bool on = std::getenv("RAYMAN_NATIVE_FETCH_LOG") != nullptr;
+  static std::set<uint64_t> logged;
+  if (!on || !g_rayman_physbase) return;
+  uint32_t vs = LoadBE32(device + kDeviceVertexShader);
+  uint32_t stride = uint32_t(g_rayman_membase[device + 0x3268]) * 4;
+  if (!vs) return;
+  {
+    // Log again whenever the filled-in microcode changes.
+    uint32_t off = LoadBE32(vs + 896);
+    if (!off || off > 0x100000) return;
+    uint32_t code = LoadBE32(vs + off + 872) + LoadBE32(vs + 32), size = std::min(LoadBE32(vs + off + 876), 4096u);
+    uint32_t phys = (code & 0x1FFFFFFF) + (code >= 0xE0000000u ? 0x1000 : 0);
+    uint64_t sig = XXH3_64bits(g_rayman_physbase + phys, size) ^ (uint64_t(vs) << 32) ^ stride;
+    if (!logged.insert(sig).second) return;
+  }
+  uint64_t hash;
+  {
+    std::lock_guard lock(g_mutex);
+    hash = ShaderHash(vs);
+  }
+  uint32_t codeBase = LoadBE32(vs + 32);
+  CAPTURE_LOG("fetch: vs %016llX object %08X stride %u code base %08X", (unsigned long long)hash, vs, stride,
+              codeBase);
+  for (uint32_t i = 0; i < 8; ++i) {
+    uint32_t off = LoadBE32(vs + 896 + 8 * i), extra = LoadBE32(vs + 900 + 8 * i);
+    if (!off || off > 0x100000) break;
+    uint32_t binding = vs + off;
+    uint32_t code = LoadBE32(binding + 872) + codeBase, size = LoadBE32(binding + 876);
+    CAPTURE_LOG("  binding %u: +%X (%08X) code %08X size %u", i, off, extra, code, size);
+    uint32_t phys = (code & 0x1FFFFFFF) + (code >= 0xE0000000u ? 0x1000 : 0);
+    uint32_t bytes = std::min(size, 4096u) & ~3u;
+    for (uint32_t o = 0; o + 12 <= bytes; o += 4) {
+      uint32_t w[3];
+      for (int k = 0; k < 3; ++k) {
+        std::memcpy(&w[k], g_rayman_physbase + phys + o + k * 4, 4);
+        w[k] = __builtin_bswap32(w[k]);
+      }
+      // vfetch: opcode 0, must_be_one, fetch constant 95 - stream (stream 0: 31*3+2).
+      if ((w[0] & 0x1F) || !((w[0] >> 19) & 1) || ((w[0] >> 20) & 0x7F) != (31 | 2 << 5)) continue;
+      CAPTURE_LOG("    @%03X dst r%u swiz %03X format %u offset %d stride %u mini %u", o, (w[0] >> 12) & 0x3F,
+                  w[1] & 0xFFF, (w[1] >> 16) & 0x3F, int32_t(w[2] << 1) >> 9, w[2] & 0xFF, (w[1] >> 30) & 1);
+    }
+  }
+}
+
 void RecordDraw(int entry, const PPCContext& ctx) {
   uint32_t device = ctx.r3.u32;
   uint32_t primitive = ctx.r4.u32;
@@ -216,7 +267,9 @@ void DumpDraw(int entry, const PPCContext& ctx) {
     uint32_t format = d1 & 0x3F;
     uint32_t block = format == 0x12 ? 8 : (format == 0x13 || format == 0x14) ? 16 :
                      format == 0x02 ? 16 : (format == 0x04 || format == 0x05) ? 32 : 64;
-    uint32_t bytes = ((width + 31) & ~31u) / 4 * (((height + 31) & ~31u) / 4) * block;
+    // Tiled textures take whole 32x32-block tiles: for block formats that is
+    // 128x128 texels (a 512x64 DXT texture spans 128 texel rows, not 64).
+    uint32_t bytes = ((width + 127) & ~127u) / 4 * (((height + 127) & ~127u) / 4) * block;
     AddRange(d1 & 0xFFFFF000, bytes);
     if (d5 & 0xFFFFF000) {
       AddRange(d5 & 0xFFFFF000, bytes);
@@ -266,13 +319,32 @@ void RaymanNativeCaptureFrame() {
   if (const char* target = std::getenv("RAYMAN_NATIVE_DUMP")) {
     trigger = g_frame + 1 == std::strtoull(target, nullptr, 10);
   }
-  if (!trigger && g_frame % 30 == 0) {
+  // RAYMAN_CAPTURE_DIR moves captures/ out of the working directory (Android
+  // sets it to the app's external files folder, reachable with adb).
+  const char* dirEnv = std::getenv("RAYMAN_CAPTURE_DIR");
+  std::filesystem::path dir = dirEnv ? std::filesystem::path(dirEnv) / "captures" : "captures";
+  if (dirEnv && g_frame == 1) {
+    // Created by the game, so it owns it: on Android it cannot look inside a
+    // folder that adb created, only drop files into one it owns.
     std::error_code ec;
-    trigger = std::filesystem::remove("captures/dump_now", ec);
+    std::filesystem::create_directories(dir, ec);
+  }
+  if (!trigger && g_frame % 30 == 0) {
+    // Fires once per new dump_now: on Android the app may not be allowed to
+    // delete a file adb created in its folder, so a changed time counts too.
+    static std::filesystem::file_time_type lastTrigger;
+    std::error_code ec;
+    auto when = std::filesystem::last_write_time(dir / "dump_now", ec);
+    if (!ec && when != lastTrigger) {
+      lastTrigger = when;
+      trigger = true;
+      std::filesystem::remove(dir / "dump_now", ec);
+    }
   }
   if (trigger && g_rayman_physbase) {
-    std::filesystem::create_directories("captures");
-    g_dump = std::fopen("captures/native_frame.bin", "wb");
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    g_dump = std::fopen((dir / "native_frame.bin").string().c_str(), "wb");
     if (g_dump) {
       std::fwrite("RNF1", 1, 4, g_dump);
       g_dumpDraws = 0;
@@ -321,7 +393,9 @@ REX_HOOK_RAW(sub_826D7588) {
   if (Enabled()) {
     RecordDraw(0, ctx);
   }
+  uint32_t device = ctx.r3.u32;
   __imp__sub_826D7588(ctx, base);
+  if (Enabled()) LogVertexFetches(device);
 }
 
 REX_HOOK_RAW(sub_826D7170) {
@@ -342,8 +416,15 @@ REX_HOOK_RAW(sub_826D7128) {
 
 // Render-target traffic, logged with RAYMAN_NATIVE_CAPTURE (frames multiple of 120).
 // Resolve(device, flags, srcRect, destTexture, destPoint, level, slice, clearColor, ...):
-// the destination texture's fetch constant is at texture + 0x18. The source is
-// the current render target: RB_SURFACE_INFO / RB_COLOR_INFO at device + 0x2880 / 0x2884.
+// the destination is a D3DBaseTexture: the D3DResource header (Common,
+// ReferenceCount, Fence, ReadFence, Identifier, BaseFlush: 0x18 bytes), then
+// MipFlush, then the fetch constant at texture + 0x1C. (Reading it at + 0x18
+// shifted every field by a dword: resolved textures landed at a wrong address
+// and size, and whatever sampled them, like the water's refraction, read an
+// empty texture.) The source is the current render target: RB_SURFACE_INFO /
+// RB_COLOR_INFO at device + 0x2880 / 0x2884.
+constexpr uint32_t kTextureFetch = 0x1C;
+
 REX_HOOK_RAW(sub_826D9588) {
   if (Enabled()) {
     uint32_t device = ctx.r3.u32, flags = ctx.r4.u32, rect = ctx.r5.u32, tex = ctx.r6.u32;
@@ -352,12 +433,12 @@ REX_HOOK_RAW(sub_826D9588) {
       int32_t r[4];
       if (rect) for (int i = 0; i < 4; ++i) r[i] = int32_t(LoadBE32(rect + 4 * i));
       RaymanNativeRendererResolve(g_rayman_membase + device + native::kStateBegin, rect ? r : nullptr,
-                                  g_rayman_membase + tex + 0x18);
+                                  g_rayman_membase + tex + kTextureFetch);
     }
   }
   if (std::getenv("RAYMAN_NATIVE_CAPTURE") && g_frame % 120 == 0) {
     uint32_t device = ctx.r3.u32, tex = ctx.r6.u32, rect = ctx.r5.u32;
-    uint32_t f1 = tex ? LoadBE32(tex + 0x18 + 4) : 0, f2 = tex ? LoadBE32(tex + 0x18 + 8) : 0;
+    uint32_t f1 = tex ? LoadBE32(tex + kTextureFetch + 4) : 0, f2 = tex ? LoadBE32(tex + kTextureFetch + 8) : 0;
     CAPTURE_LOG("resolve flags %X rect %s(%d,%d,%d,%d) dest %08X fmt %u base %08X %ux%u surface %08X color %08X",
                 ctx.r4.u32, rect ? "" : "none", rect ? int(LoadBE32(rect)) : 0, rect ? int(LoadBE32(rect + 4)) : 0,
                 rect ? int(LoadBE32(rect + 8)) : 0, rect ? int(LoadBE32(rect + 12)) : 0, tex, f1 & 0x3F,

@@ -191,6 +191,10 @@ class Renderer {
   };
   // Why draws were skipped since the last call, e.g. "layout vs=...(0,4,8,9,12)" -> count.
   std::map<std::string, uint32_t> TakeSkipReasons() { return std::move(skipReasons_); }
+  // Render-to-texture diagnostics since the last call: resolves seen, textures
+  // that overlap a resolve's destination without matching it, textures whose
+  // guest memory is all zeros (written by the GPU on the console, not here).
+  std::map<std::string, uint32_t> TakeNotes() { return std::move(notes_); }
   const Stats& stats() const { return stats_; }
 
   // Starts recording a frame into the next set of per-frame resources. The
@@ -239,6 +243,17 @@ class Renderer {
   // would have written on the console.
   void Resolve(const uint8_t* state, const int32_t* rect, const uint8_t* destFetch) {
     xenos::TextureFetch t = xenos::DecodeFetch(destFetch);
+    // The destination texture's header carries its virtual address, while the
+    // draws that later sample it fetch by physical address: translate, the way
+    // the console maps it (0xE0000000+ views are offset by a page).
+    if (t.base >= 0x20000000u) t.base = (t.base & 0x1FFFFFFFu) + (t.base >= 0xE0000000u ? 0x1000u : 0u);
+    {
+      char note[160];
+      std::snprintf(note, sizeof(note), "resolve target %llx rect %s(%d,%d,%d,%d) -> %08X %ux%u fmt 0x%02X",
+                    (unsigned long long)TargetOf(state), rect ? "" : "viewport ", rect ? rect[0] : 0, rect ? rect[1] : 0,
+                    rect ? rect[2] : 0, rect ? rect[3] : 0, t.base, t.width, t.height, t.format);
+      ++notes_[note];
+    }
     if (t.width < 8 || t.height < 8) return;  // not a color texture (the front buffer)
     Op op{};
     op.kind = Op::kResolve;
@@ -734,7 +749,16 @@ class Renderer {
     if (!count) return Fail("no Vulkan device");
     std::vector<VkPhysicalDevice> devices(count);
     vkEnumeratePhysicalDevices(instance_, &count, devices.data());
+    // A discrete GPU when there is one (laptops list the integrated one first).
     phys_ = devices[0];
+    for (VkPhysicalDevice d : devices) {
+      VkPhysicalDeviceProperties p;
+      vkGetPhysicalDeviceProperties(d, &p);
+      if (p.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+        phys_ = d;
+        break;
+      }
+    }
     stage("device: physical device found");
     vkGetPhysicalDeviceProperties(phys_, &props_);
     vkGetPhysicalDeviceMemoryProperties(phys_, &memProps_);
@@ -1274,6 +1298,18 @@ class Renderer {
     }
     stats_.uploadBytes += bytes;
     ++(fresh ? stats_.newTextures : stats_.reuploads);
+    if (fresh) {
+      // All zeros: memory the console's GPU would have written (render to texture).
+      const uint8_t* p = staging_.map + at;
+      bool zero = true;
+      for (size_t i = 0; zero && i < std::min<size_t>(bytes, 65536); ++i) zero = p[i] == 0;
+      if (zero) {
+        char note[128];
+        std::snprintf(note, sizeof(note), "texture %08X %ux%u fmt 0x%02X is all zeros in guest memory", t.base, t.width,
+                      t.height, t.format);
+        ++notes_[note];
+      }
+    }
     Barrier(uploads_, img.image, fresh ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     VkBufferImageCopy copy{};
@@ -1299,6 +1335,17 @@ class Renderer {
       uint64_t signature = Signature(t.base, e.span);
       if (signature != e.signature && Upload(e.image, t, false)) e.signature = signature;
       return e.index;
+    }
+    // A texture inside a resolve's destination that doesn't start at it: the
+    // resolved copy won't be found by address.
+    for (auto& [rbase, r] : resolvedByBase_) {
+      uint32_t rsize = r->width * r->height * 4;
+      if (t.base != rbase && t.base >= rbase && t.base < rbase + rsize) {
+        char note[160];
+        std::snprintf(note, sizeof(note), "texture %08X %ux%u fmt 0x%02X lies inside resolve dest %08X %ux%u", t.base,
+                      t.width, t.height, t.format, rbase, r->width, r->height);
+        ++notes_[note];
+      }
     }
     TextureEntry& e = textures_[key];
     if (!xenos::Supported(t.format) || textureCount_ >= kMaxTextures) {
@@ -1345,7 +1392,7 @@ class Renderer {
       if (vertex) inputs_[hash] = spirv::VertexInputLocations(code);
       // Constant bytes this shader reads (set 4 binding 0 VS / 1 PS before the patch).
       constantBytes_[key] = spirv::UniformBlockBytes(code, 4, vertex ? 0 : 1, 4096);
-      code = spirv::PatchForVulkan11(code, kMaxTextures, kMaxSamplers);
+      code = spirv::PatchForVulkan11(spirv::FixSetpInv(code), kMaxTextures, kMaxSamplers);
       ci.codeSize = code.size() * 4;
       ci.pCode = code.data();
       vkCreateShaderModule(device_, &ci, nullptr, &m);
@@ -1573,6 +1620,7 @@ class Renderer {
   std::unordered_map<PipelineKey, VkPipeline, KeyHash> pipelines_;
   std::unordered_map<LayoutKey, Layout, KeyHash> layouts_;
   std::map<std::string, uint32_t> skipReasons_;
+  std::map<std::string, uint32_t> notes_;
 };
 
 }  // namespace native

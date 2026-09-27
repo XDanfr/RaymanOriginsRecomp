@@ -3,6 +3,7 @@
     <string name="app_name">Rayman Origins Recomp</string>
     <string name="settings_title">Settings</string>
     <string name="controls_visible">Show on-screen controls</string>
+    <string name="run_toggle">Run button: tap to start/stop running</string>
     <string name="controls_opacity">Controls opacity</string>
     <string name="controls_size">Controls size</string>
     <string name="fill_screen">Fill the whole screen (stretched)</string>

@@ -14,11 +14,24 @@ android {
         applicationId 'io.github.belmantegu.raymanrecomp'
         minSdk 29
         targetSdk 35
-        versionCode 2
-        versionName '0.4.0'
+        versionCode 3
+        versionName '0.5.0'
         ndk {
             abiFilters 'arm64-v8a'
         }
+        // -PraymanCompact: the Compact app, a separate app (own id, name and
+        // files) that imports a compact game pack (.rdpk, tools/make_compact_pack.py):
+        // the game's data deduplicated, 5.4 GB -> 1.1 GB, read as the original files.
+        boolean compact = project.hasProperty('raymanCompact')
+        if (compact) {
+            applicationId 'io.github.belmantegu.raymanrecomp.compact'
+        }
+        manifestPlaceholders = [appLabel: compact ? 'Rayman Origins Compact' : 'Rayman Origins Recomp']
+        buildConfigField 'boolean', 'COMPACT', compact ? 'true' : 'false'
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     buildTypes {

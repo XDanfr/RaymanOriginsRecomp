@@ -179,7 +179,7 @@ On the S23, before fix 1: 45 fps at 100%, **57–60 fps at 50–67%**. After fix
 
 ## Still open
 
-- The Redmi 10C (Adreno 610, Vulkan 1.1): the renderer's Vulkan 1.1 path is built for it and its SPIR-V validates, but it hasn't run on the device yet.
+- The Redmi 10C (Adreno 610, Vulkan 1.1) runs the game (0.5.0), through the renderer's Vulkan 1.1 path. Its frame rate hasn't been measured yet.
 - Thermal behaviour over long sessions, and the GPU cost at full resolution on low-end devices.
 - Texture decoding for new textures still runs on the game thread (loading screens).
 - The rest of the game thread is the recompiled game code itself, spread over thousands of functions, the largest at 1.7%.

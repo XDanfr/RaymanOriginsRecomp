@@ -21,6 +21,7 @@ ReXGlue has no Android build upstream. `android/rexglue-patches/` holds our patc
 - Shims for NDK libc++ gaps (floating-point `from_chars`, `clock_cast`, `jthread`) and for Bionic (no robust mutexes).
 - The runtime locates its GPU plugin next to its own library (`dladdr`), since `/proc/self/exe` is the zygote.
 - Performance (0005, 0006, see [ANDROID_PERFORMANCE.md](ANDROID_PERFORMANCE.md)): guest memory commits use `mprotect` instead of parsing `/proc/self/maps`, and `WaitMultiple` sleeps instead of polling.
+- Compact packs (0007): a `PackedDevice` that serves the game's files from a deduplicated, memory-mapped `game.rdpk` (see *Compact app* below).
 
 ```sh
 git clone --recurse-submodules --branch v0.10.0 https://github.com/rexglue/rexglue-sdk.git tools/forks/rexglue-src
@@ -79,6 +80,16 @@ adb shell "find $G -type d -exec chmod 777 {} +"
 
 The app reads `default.xex` and the bundles from that folder. The runtime log is at `/sdcard/Android/data/io.github.belmantegu.raymanrecomp/files/rayman.log`. Crashes show up in `adb logcat -b crash`.
 
+### Compact app (for personal use)
+
+The game's bundles repeat a lot of data between levels. `python tools/make_compact_pack.py` stores every distinct run of bytes once and describes each file as a list of pieces of that store: **5.4 GB becomes 1.1 GB** (`private/dist/RaymanOrigins-compact.rdpk`), with nothing lost. The script rebuilds every file from the pack and checks it byte for byte before writing it. The runtime reads the pack memory-mapped, as if the original files were there (patch 0007).
+
+It is a separate app, installed next to the normal one with its own name and files: `sh android/build_apk.sh` with `ORG_GRADLE_PROJECT_raymanCompact=true` builds **Rayman Origins Compact** (`io.github.belmantegu.raymanrecomp.compact`). Its home screen imports the `.rdpk` instead of the game zip. Like the zip, the pack is your copy of the game: keep it to yourself.
+
+### Saves
+
+**Options → Back up saves** writes your saves to a `.zip` of your choice (for example in Downloads, or to move them to another phone). **Restore saves** reads one back: it asks first, replaces the current saves, and puts the old ones back if the zip can't be read.
+
 ## Status on a Galaxy S23 (Adreno 740, Android 16)
 
 **The title screen renders.** The native libraries load, the Vulkan device and swapchain come up at 2340×1080, the guest memory is mapped, and audio opens at 6 channels / 48 kHz. The game shows the Ubisoft logo, then the title screen rendered in real time (captured with `adb exec-out screencap`):
@@ -95,13 +106,17 @@ Graphics still go through the Xenos emulation, and performance hasn't been measu
 
 The Galaxy A56 (Exynos 1580) has no Adreno GPU: its Samsung **Xclipse 540** is based on AMD's RDNA architecture, with Samsung's own Vulkan driver. The game runs very well on it with nothing specific to it: the first level at **60 fps**, correct picture, and the renderer never waits for the GPU (two frames in flight). It is the first non-Snapdragon phone the port has run on. Details in [ANDROID_PERFORMANCE.md](ANDROID_PERFORMANCE.md#beyond-adreno-galaxy-a56-exynos-1580-xclipse-540).
 
+## Also tested: Redmi 10C (low end, Vulkan 1.1)
+
+The Redmi 10C (Snapdragon 680, Adreno 610, 4 GB of RAM, Android 13) runs the game with the native renderer. Its GPU driver only offers Vulkan 1.1 with 4 descriptor sets and no descriptor indexing, which the renderer's plain Vulkan 1.1 path covers. Its frame rate hasn't been measured yet; **Settings → Resolution** is there for it.
+
 ## Performance
 
 [ANDROID_PERFORMANCE.md](ANDROID_PERFORMANCE.md) has the profiling pass on the Galaxy S23 and the Redmi 10C: what cost the frame rate, how it was measured and what fixed it. Levels went from 43–46 to 60 fps at full resolution. **Settings → Resolution** (50–100%) lowers the render resolution for weaker GPUs.
 
 ## Controls
 
-- **On-screen controller.** A floating stick on the left, placed where the thumb lands. A (jump, hold to glide), X (attack), B, Y and RT (run) on the right. Back and Start at the top. The overlay feeds an SDL3 virtual gamepad (`rex/src/android_touch.cpp`), so the game sees an ordinary Xbox 360 controller.
+- **On-screen controller.** A floating stick on the left, placed where the thumb lands. A (jump, hold to glide), X (attack), B, Y and RT (run) on the right. Run is a toggle by default: one tap starts running and the next one stops (lit while on); untick *Run button: tap to start/stop running* in the settings to hold it instead. Back and Start at the top. The overlay feeds an SDL3 virtual gamepad (`rex/src/android_touch.cpp`), so the game sees an ordinary Xbox 360 controller.
 - **Settings** (⚙ at the top right): show or hide the controls, opacity, size, the native renderer, and *fill the whole screen* (only for the emulated GPU: it stretches the 16:9 picture; the native renderer shows true widescreen). **Home screen** opens the launcher (game files, saves, graphics). The ⚙ button stays faintly visible when the controls are hidden.
 - **Starting:** the app opens on the home screen ([PORT_HOME.md](PORT_HOME.md)): Play, Options (resolution, graphics, touch controls, imports), Game files (import your game pack) and Quit, driven by touch or a controller. The game is landscape only.
 - **Touch behaviour:** a button presses only when a finger lands on it (or slides onto it from another button); a thumb resting between buttons stays inert. The stick has a small dead zone.

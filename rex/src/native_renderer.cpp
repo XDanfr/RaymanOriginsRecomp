@@ -435,5 +435,6 @@ void RaymanNativeRendererPresent() {
     NATIVE_LOG("native frame %d: %u draws, %u skipped, %u pipelines, %u textures", frames, s.draws, s.skipped,
                s.pipelines, s.textures);
     for (auto& [reason, n] : g_renderer->TakeSkipReasons()) NATIVE_LOG("  skipped x%u: %s", n, reason.c_str());
+    for (auto& [note, n] : g_renderer->TakeNotes()) NATIVE_LOG("  note x%u: %s", n, note.c_str());
   }
 }

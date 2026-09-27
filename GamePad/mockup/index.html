@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GamePad S23</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Luckiest+Guy&family=Nunito:wght@400;600;800&display=swap">
+<style>
+  :root {
+    color-scheme: dark;
+    --ground: #0d1a1c;
+    --panel: #15272a;
+    --line: #2a4448;
+    --ink: #eaf3ef;
+    --muted: #9db5b0;
+    --lum: #f5c542;
+    --sea: #2f8fd8;
+  }
+  html, body { background: var(--ground); color: var(--ink); }
+  body {
+    font: 15px/1.5 "Nunito", system-ui, sans-serif;
+    padding-inline: 16px;
+    padding-block: 20px 40px;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 20px; }
+  header { display: grid; gap: 4px; }
+  h1 {
+    font: 400 clamp(28px, 4vw, 42px)/1.05 "Luckiest Guy", "Nunito", sans-serif;
+    letter-spacing: .02em; color: var(--lum); margin: 0;
+    text-shadow: 0 3px 0 #7a2a12;
+    text-wrap: balance;
+  }
+  header p { margin: 0; color: var(--muted); max-width: 70ch; }
+
+  /* ---- Phone ---- */
+  .phone {
+    position: relative;
+    background: #050807;
+    border-radius: clamp(14px, 3.2vw, 42px);
+    padding: clamp(6px, 1vw, 12px);
+    box-shadow: 0 0 0 2px #2b3431, 0 18px 50px rgba(0,0,0,.55);
+  }
+  .stage {
+    position: relative; width: 100%; max-width: 100%;
+    aspect-ratio: 2340 / 1080;
+    border-radius: clamp(10px, 2.4vw, 32px);
+    overflow: hidden;
+    background: #000 center / cover no-repeat;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+  .stage::after { /* punch-hole camera, landscape = left edge */
+    content: ""; position: absolute; left: 1.4%; top: 50%;
+    width: 1.1%; aspect-ratio: 1; border-radius: 50%;
+    background: #000; transform: translateY(-50%);
+    box-shadow: 0 0 0 1px #222;
+  }
+  .ctl {
+    position: absolute; transform: translate(-50%, -50%);
+    background: none; border: 0; padding: 0; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .ctl img {
+    width: 100%; height: 100%; display: block; pointer-events: none;
+    transition: transform 70ms ease-out, filter 70ms ease-out;
+  }
+  .ctl.down img {
+    transform: scale(.92);
+    filter: brightness(1.18) saturate(1.1)
+            drop-shadow(0 0 calc(var(--r) * .18) rgba(255, 214, 80, .95))
+            drop-shadow(0 0 calc(var(--r) * .06) #fff3b0);
+  }
+  .ctl:focus-visible { outline: 3px solid var(--lum); outline-offset: 2px; border-radius: 50%; }
+  .hitring {
+    position: absolute; border: 2px dashed rgba(255,255,255,.75);
+    border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none;
+  }
+  .zone {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 45%;
+    background: repeating-linear-gradient(135deg, rgba(47,143,216,.14) 0 12px, transparent 12px 24px);
+    border-right: 2px dashed rgba(47,143,216,.7); pointer-events: none;
+  }
+  .stick { position: absolute; transform: translate(-50%, -50%); pointer-events: none; }
+  .stick img { width: 100%; height: 100%; display: block; }
+  .knob { position: absolute; transform: translate(-50%, -50%); pointer-events: none; transition: filter 70ms; }
+  .knob img { width: 100%; height: 100%; display: block; }
+  .knob.active { filter: brightness(1.15) drop-shadow(0 0 10px rgba(255,214,80,.8)); }
+
+  /* ---- Controls panel ---- */
+  .panel {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 16px; display: grid; gap: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  }
+  .field { display: grid; gap: 6px; align-content: start; }
+  .label { font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+  .seg button {
+    font: 600 14px "Nunito", sans-serif; color: var(--ink);
+    background: #0f1e20; border: 1px solid var(--line); border-radius: 999px;
+    padding: 6px 12px; cursor: pointer;
+  }
+  .seg button[aria-pressed="true"] { background: var(--sea); border-color: var(--sea); color: #fff; }
+  .seg button:focus-visible, input:focus-visible { outline: 2px solid var(--lum); outline-offset: 2px; }
+  .range { display: flex; align-items: center; gap: 10px; }
+  .range input { flex: 1; accent-color: var(--lum); }
+  .range output { font-variant-numeric: tabular-nums; min-width: 4ch; text-align: right; font-weight: 800; }
+  .check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .check input { accent-color: var(--lum); width: 18px; height: 18px; }
+
+  /* ---- States table ---- */
+  h2 { font: 400 22px/1.2 "Luckiest Guy", "Nunito", sans-serif; letter-spacing: .03em; margin: 8px 0 0; color: var(--ink); }
+  .note { color: var(--muted); margin: 0; max-width: 75ch; }
+  .states {
+    display: grid; gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 12px; display: grid; gap: 8px;
+  }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; text-align: center; font-size: 12px; color: var(--muted); }
+  .pair .ctl { position: static; transform: none; width: 100%; aspect-ratio: 1; --r: 40px; pointer-events: none; }
+  .pair figure { margin: 0; display: grid; gap: 4px; background: #0b1618; border-radius: 10px; padding: 8px; }
+  .card b { font-size: 14px; }
+  .card code { font-size: 12px; color: var(--lum); }
+  .card span { font-size: 13px; color: var(--muted); }
+  @media (prefers-reduced-motion: reduce) { .ctl img, .knob { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>GamePad no Galaxy S23</h1>
+    <p>Tela em paisagem, 2340 × 1080 (19,5:9). As posições e os tamanhos vêm do <code>TouchControls.java</code> atual, com tamanho 100%. Toque nos botões e arraste o analógico na metade esquerda. Dá pra usar vários dedos ao mesmo tempo.</p>
+  </header>
+
+  <div class="phone"><div class="stage" id="stage"></div></div>
+
+  <div class="panel">
+    <div class="field">
+      <span class="label">Fundo</span>
+      <div class="seg" id="bgSeg">
+        <button type="button" id="bg-gameplay" data-bg="../../docs/media/android-s23-demo-video.jpg" aria-pressed="true">Fase clara</button>
+        <button type="button" id="bg-title" data-bg="../../docs/media/android-s23-title.jpg" aria-pressed="false">Tela de título</button>
+        <button type="button" id="bg-none" data-bg="" aria-pressed="false">Preto</button>
+      </div>
+    </div>
+    <div class="field">
+      <span class="label">Estado</span>
+      <div class="seg" id="modeSeg">
+        <button type="button" id="mode-live" data-mode="live" aria-pressed="true">Interativo</button>
+        <button type="button" id="mode-all" data-mode="all" aria-pressed="false">Tudo pressionado</button>
+        <button type="button" id="mode-hidden" data-mode="hidden" aria-pressed="false">Controles ocultos</button>
+      </div>
+    </div>
+    <div class="field">
+      <label class="label" for="opacity">Opacidade</label>
+      <div class="range"><input type="range" id="opacity" min="10" max="100" value="55"><output id="opacityOut">55%</output></div>
+    </div>
+    <div class="field">
+      <label class="label" for="scale">Tamanho dos controles</label>
+      <div class="range"><input type="range" id="scale" min="60" max="150" value="100"><output id="scaleOut">100%</output></div>
+    </div>
+    <div class="field">
+      <span class="label">Opções</span>
+      <label class="check"><input type="checkbox" id="showY" checked> Mostrar o botão Y</label>
+      <label class="check"><input type="checkbox" id="showHit"> Mostrar a área de toque</label>
+    </div>
+  </div>
+
+  <h2>Estados de cada botão</h2>
+  <p class="note">A arte do estado pressionado ainda não existe. O pressionado abaixo é gerado pelo app a partir da arte normal: fica 8% menor, mais claro e com o brilho amarelo do concept. Se você desenhar os <code>*_pressed.png</code>, eles entram no lugar.</p>
+  <div class="states" id="states"></div>
+</div>
+
+<script>
+(() => {
+  const W = 2340, H = 1080;
+  const ART = 1.25; // bubble fills ~80% of the PNG; splashes overflow the touch circle
+  const BTNS = [
+    { id: "A",   img: "btn_jump",     name: "Pular / planar",       key: "A" },
+    { id: "X",   img: "btn_attack",   name: "Atacar (soco)",        key: "X" },
+    { id: "RT",  img: "btn_run",      name: "Correr (segurar)",     key: "RT" },
+    { id: "B",   img: "btn_back",     name: "Ataca / volta no menu", key: "B" },
+    { id: "Y",   img: "btn_y",        name: "Não usado",            key: "Y" },
+    { id: "SEL", img: "btn_select",   name: "Menu secundário",      key: "Back" },
+    { id: "PAU", img: "btn_pause",    name: "Pausar",               key: "Start" },
+    { id: "SET", img: "btn_settings", name: "Configurações do app", key: "—" },
+  ];
+  const stage = document.getElementById("stage");
+  const S = { opacity: .55, scale: 1, mode: "live", showY: true, showHit: false };
+  const els = {}, rings = {};
+  const held = new Map(); // pointerId -> button id
+  let stickPtr = null, stickBase = null, stickPos = null, rest = null, geom = null;
+
+  // Stick zone, stick base, knob
+  const zone = document.createElement("div"); zone.className = "zone"; zone.hidden = true; stage.append(zone);
+  const base = document.createElement("div"); base.className = "stick";
+  base.innerHTML = '<img src="../stick_base.png" alt="">'; stage.append(base);
+  const knob = document.createElement("div"); knob.className = "knob";
+  knob.innerHTML = '<img src="../stick_knob.png" alt="Analógico">'; stage.append(knob);
+
+  for (const b of BTNS) {
+    const el = document.createElement("button");
+    el.type = "button"; el.className = "ctl"; el.id = "btn-" + b.id;
+    el.setAttribute("aria-label", b.name);
+    el.innerHTML = `<img src="../${b.img}.png" alt="">`;
+    stage.append(el); els[b.id] = el;
+    const ring = document.createElement("div"); ring.className = "hitring"; ring.hidden = true;
+    stage.append(ring); rings[b.id] = ring;
+    el.addEventListener("pointerdown", e => {
+      if (S.mode !== "live" && !(S.mode === "hidden" && b.id === "SET")) return;
+      e.preventDefault(); e.stopPropagation();
+      el.setPointerCapture(e.pointerId);
+      held.set(e.pointerId, b.id); paint();
+    });
+    const up = e => { if (held.delete(e.pointerId)) paint(); };
+    el.addEventListener("pointerup", up);
+    el.addEventListener("pointercancel", up);
+    el.addEventListener("lostpointercapture", up);
+    el.addEventListener("keydown", e => { if (e.key === " " || e.key === "Enter") { held.set("k" + b.id, b.id); paint(); } });
+    el.addEventListener("keyup", () => { held.delete("k" + b.id); paint(); });
+  }
+
+  // Same math as TouchControls.layoutButtons, in stage pixels
+  function layout() {
+    const w = stage.clientWidth, h = stage.clientHeight;
+    const u = Math.min(w, h) / 1080 * S.scale;
+    const face = 70 * u, margin = 60 * u, spread = face * 2.1;
+    const dX = w - margin - face * 3.2, dY = h - margin - face * 3.2;
+    const small = 42 * u;
+    const pos = {
+      A: [dX, dY + spread, face], B: [dX + spread, dY, face],
+      X: [dX - spread, dY, face], Y: [dX, dY - spread, face],
+      RT: [dX - spread * 2.2, dY + spread, face * .85],
+      SEL: [w / 2 - small * 2.5, margin, small], PAU: [w / 2 + small * 2.5, margin, small],
+      SET: [w - margin, margin, small],
+    };
+    const sr = 150 * u;
+    geom = { pos, sr, w, h };
+    rest = [margin + sr * 1.3, h - margin - sr * 1.3];
+    if (stickPtr === null) { stickBase = rest.slice(); stickPos = rest.slice(); }
+    for (const id in pos) {
+      const [x, y, r] = pos[id], d = 2 * r * ART;
+      Object.assign(els[id].style, { left: x + "px", top: y + "px", width: d + "px", height: d + "px" });
+      els[id].style.setProperty("--r", r + "px");
+      Object.assign(rings[id].style, { left: x + "px", top: y + "px", width: 2 * r + "px", height: 2 * r + "px" });
+    }
+    paint();
+  }
+
+  function paint() {
+    if (!geom) return;
+    const down = new Set(held.values());
+    const hidden = S.mode === "hidden";
+    for (const b of BTNS) {
+      const el = els[b.id];
+      const visible = hidden ? b.id === "SET" : (b.id !== "Y" || S.showY);
+      el.hidden = !visible; rings[b.id].hidden = !visible || !S.showHit;
+      const isDown = S.mode === "all" || down.has(b.id);
+      el.classList.toggle("down", isDown);
+      const a = hidden ? Math.min(S.opacity, 60 / 255) : S.opacity;
+      el.style.opacity = isDown ? Math.min(1, a + 90 / 255) : a;
+    }
+    const sr = geom.sr;
+    base.hidden = knob.hidden = hidden;
+    zone.hidden = !S.showHit || hidden;
+    const bd = 2 * sr * 1.12;
+    Object.assign(base.style, { left: stickBase[0] + "px", top: stickBase[1] + "px", width: bd + "px", height: bd + "px", opacity: S.opacity });
+    const kd = 2 * sr * .42 * 1.45;
+    const active = stickPtr !== null || S.mode === "all";
+    Object.assign(knob.style, { left: stickPos[0] + "px", top: stickPos[1] + "px", width: kd + "px", height: kd + "px",
+      opacity: active ? Math.min(1, S.opacity + 60 / 255) : S.opacity });
+    knob.classList.toggle("active", active);
+  }
+
+  // Floating stick: appears where the thumb lands in the left 45%
+  const local = e => { const r = stage.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  stage.addEventListener("pointerdown", e => {
+    if (S.mode !== "live" || stickPtr !== null) return;
+    const [x, y] = local(e);
+    if (x > geom.w * .45) return;
+    stickPtr = e.pointerId; stage.setPointerCapture(e.pointerId);
+    stickBase = [x, y]; stickPos = [x, y]; paint();
+  });
+  stage.addEventListener("pointermove", e => {
+    if (e.pointerId !== stickPtr) return;
+    let [x, y] = local(e), dx = x - stickBase[0], dy = y - stickBase[1];
+    const len = Math.hypot(dx, dy), sr = geom.sr;
+    if (len > sr) { dx *= sr / len; dy *= sr / len; }
+    stickPos = [stickBase[0] + dx, stickBase[1] + dy]; paint();
+  });
+  const stickUp = e => {
+    if (e.pointerId !== stickPtr) return;
+    stickPtr = null; stickBase = rest.slice(); stickPos = rest.slice(); paint();
+  };
+  stage.addEventListener("pointerup", stickUp);
+  stage.addEventListener("pointercancel", stickUp);
+
+  // Panel
+  function seg(id, fn) {
+    const box = document.getElementById(id);
+    box.addEventListener("click", e => {
+      const btn = e.target.closest("button"); if (!btn) return;
+      box.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === btn));
+      fn(btn);
+    });
+  }
+  const setBg = src => stage.style.backgroundImage = src ? `url("${src}")` : "none";
+  setBg("../../docs/media/android-s23-demo-video.jpg");
+  seg("bgSeg", b => setBg(b.dataset.bg));
+  seg("modeSeg", b => { S.mode = b.dataset.mode; held.clear(); paint(); });
+  const range = (id, key, cb) => {
+    const input = document.getElementById(id), out = document.getElementById(id + "Out");
+    input.addEventListener("input", () => { out.textContent = input.value + "%"; S[key] = input.value / 100; cb(); });
+  };
+  range("opacity", "opacity", paint);
+  range("scale", "scale", layout);
+  document.getElementById("showY").addEventListener("change", e => { S.showY = e.target.checked; paint(); });
+  document.getElementById("showHit").addEventListener("change", e => { S.showHit = e.target.checked; paint(); });
+  new ResizeObserver(layout).observe(stage);
+
+  // States grid
+  const states = document.getElementById("states");
+  const extra = [
+    { img: "stick_base", name: "Base do analógico", key: "analógico esquerdo" },
+    { img: "stick_knob", name: "Pino do analógico", key: "analógico esquerdo" },
+  ];
+  for (const b of [...BTNS, ...extra]) {
+    const card = document.createElement("div"); card.className = "card";
+    card.innerHTML = `
+      <div class="pair">
+        <figure><span class="ctl"><img src="../${b.img}.png" alt="${b.name}, normal"></span>normal</figure>
+        <figure><span class="ctl down"><img src="../${b.img}.png" alt="${b.name}, pressionado"></span>pressionado</figure>
+      </div>
+      <b>${b.name}</b>
+      <span><code>${b.img}.png</code> · ${b.key}</span>`;
+    states.append(card);
+  }
+})();
+</script>
