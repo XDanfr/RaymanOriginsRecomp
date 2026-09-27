@@ -124,4 +124,60 @@ inline std::vector<uint32_t> PatchForVulkan11(const std::vector<uint32_t>& code,
   return out;
 }
 
+// Fixes XenosRecomp's setp_inv (predicate counter invert). The Xenos scalar op
+// (ucode.h, kSetpInv) is
+//     dest = src == 1.0 ? 0.0 : (src == 0.0 ? 1.0 : src)
+// XenosRecomp emits `src == 0.0 ? 1.0 : src` and drops the first case, so the
+// counter stays at 1 instead of dropping to 0; a later setp_*_push then counts
+// 2 instead of 1 and the `== 1` branch it guards never runs. The map's vines
+// and the sky bridge (a frieze, VS DDADD473) come out broken or invisible.
+// The pattern, OpSelect %float (OpFOrdEqual a 0.0) 1.0 a, is setp_inv's
+// alone; each one becomes select(a == 1.0, 0.0, <the original select>).
+inline std::vector<uint32_t> FixSetpInv(const std::vector<uint32_t>& code) {
+  if (code.size() < 5 || code[0] != 0x07230203u) return code;
+  enum : uint32_t { OpTypeBool = 20, OpTypeFloat = 22, OpConstant = 43, OpSelect = 169, OpFOrdEqual = 180 };
+  uint32_t floatType = 0, boolType = 0;
+  std::unordered_map<uint32_t, uint32_t> floatConstant;                 // id -> bits
+  std::unordered_map<uint32_t, std::pair<uint32_t, uint32_t>> equal;    // OpFOrdEqual id -> operands
+  for (size_t i = 5; i < code.size();) {
+    const uint32_t* w = &code[i];
+    uint32_t op = w[0] & 0xFFFF, n = w[0] >> 16;
+    if (!n || i + n > code.size()) return code;
+    if (op == OpTypeFloat && n >= 3 && w[2] == 32) floatType = w[1];
+    if (op == OpTypeBool) boolType = w[1];
+    if (op == OpConstant && n == 4 && w[1] == floatType) floatConstant[w[2]] = w[3];
+    if (op == OpFOrdEqual && n == 5) equal[w[2]] = {w[3], w[4]};
+    i += n;
+  }
+  uint32_t zero = 0, one = 0;
+  for (auto& [id, bits] : floatConstant) {
+    if (bits == 0) zero = id;
+    if (bits == 0x3F800000u) one = id;
+  }
+  if (!floatType || !boolType || !zero || !one) return code;
+  uint32_t bound = code[3];
+  std::vector<uint32_t> out(code.begin(), code.begin() + 5);
+  out.reserve(code.size() + 64);
+  for (size_t i = 5; i < code.size();) {
+    const uint32_t* w = &code[i];
+    uint32_t op = w[0] & 0xFFFF, n = w[0] >> 16;
+    i += n;
+    if (op == OpSelect && n == 6 && w[1] == floatType && w[4] == one) {
+      auto eq = equal.find(w[3]);
+      uint32_t a = w[5];
+      if (eq != equal.end() && ((eq->second.first == a && eq->second.second == zero) ||
+                                (eq->second.first == zero && eq->second.second == a))) {
+        uint32_t inner = bound++, isOne = bound++;
+        out.insert(out.end(), {w[0], floatType, inner, w[3], one, a});
+        out.insert(out.end(), {(5u << 16) | OpFOrdEqual, boolType, isOne, a, one});
+        out.insert(out.end(), {(6u << 16) | OpSelect, floatType, w[2], isOne, zero, inner});
+        continue;
+      }
+    }
+    out.insert(out.end(), w, w + n);
+  }
+  out[3] = bound;
+  return out;
+}
+
 }  // namespace spirv

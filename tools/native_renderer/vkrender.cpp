@@ -7,7 +7,9 @@
 #define DUMPVIEW_NO_MAIN
 #include "dumpview.cpp"
 
+#include <cstdlib>
 #include <fstream>
+#include <set>
 
 #include "vk_renderer.h"
 
@@ -38,8 +40,18 @@ int main(int argc, char** argv) {
   });
   renderer.SetMemory([&](uint32_t address, uint32_t size) { return dv::Memory(dump, address, size); });
 
+  // VKRENDER_ONLY=12,13: render just those draws (by index), to isolate one.
+  std::set<size_t> only;
+  if (const char* list = std::getenv("VKRENDER_ONLY"))
+    for (const char* p = list; *p;) {
+      char* end;
+      only.insert(std::strtoul(p, &end, 10));
+      p = *end ? end + 1 : end;
+    }
   renderer.BeginFrame();
-  for (const dv::Draw& d : dump.draws) {
+  for (size_t i = 0; i < dump.draws.size(); ++i) {
+    const dv::Draw& d = dump.draws[i];
+    if (!only.empty() && !only.count(i)) continue;
     native::DrawCall call{d.device.data(), d.entry, d.prim, d.a5, d.a6, d.a7, d.vs, d.ps, d.ibWord0, d.ibAddress};
     renderer.Draw(call);
   }
