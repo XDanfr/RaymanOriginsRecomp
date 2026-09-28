@@ -34,8 +34,8 @@ static uint32_t Complete(XXOVERLAPPED* overlapped, uint32_t result, uint32_t len
 {
     if (!overlapped)
         return result;
-    overlapped->Error = result;
-    overlapped->Length = length;
+    overlapped->data.errorLength.Error = result;
+    overlapped->data.errorLength.Length = length;
     overlapped->dwExtendedError = 0;
     if (uint32_t event = overlapped->hEvent.get())
     {
