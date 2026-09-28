@@ -38,7 +38,43 @@ if (RAYMAN_RECOMP_SWITCH)
         -include ${CMAKE_CURRENT_SOURCE_DIR}/runtime/cpu/ppc_overrides.h
     )
 
-    # Runtime/platform integration and the final NRO executable come later.
+    # Platform-neutral runtime/kernel layer. Platform entry point, guest
+    # memory backend, crash handling, filesystem loader, and SDL frontend stay
+    # out of this target until their Switch implementations are wired in.
+    add_library(RaymanSwitchRuntimeCore STATIC
+        runtime/kernel/stub_log.cpp
+        runtime/kernel/heap.cpp
+        runtime/kernel/page_heap.cpp
+        runtime/kernel/memory_imports.cpp
+        runtime/kernel/objects.cpp
+        runtime/kernel/thread.cpp
+        runtime/kernel/sync_imports.cpp
+        runtime/kernel/system_imports.cpp
+        runtime/kernel/guest_printf.cpp
+        runtime/kernel/file_system.cpp
+        runtime/kernel/xam_imports.cpp
+        runtime/kernel/net_imports.cpp
+        runtime/kernel/video_imports.cpp
+        runtime/gpu/command_processor.cpp
+        runtime/apu/audio.cpp
+        thirdparty/o1heap/o1heap/o1heap.c
+    )
+
+    target_include_directories(RaymanSwitchRuntimeCore PRIVATE
+        runtime
+        ${CMAKE_CURRENT_SOURCE_DIR}/runtime/kernel
+        ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/o1heap/o1heap
+    )
+
+    target_compile_options(RaymanSwitchRuntimeCore PRIVATE
+        -O1
+        -fno-strict-aliasing
+        -w
+        -include ${CMAKE_CURRENT_SOURCE_DIR}/runtime/cpu/ppc_overrides.h
+    )
+
+    target_link_libraries(RaymanSwitchRuntimeCore PRIVATE RaymanRecompLib)
+
     return()
 endif()
 
