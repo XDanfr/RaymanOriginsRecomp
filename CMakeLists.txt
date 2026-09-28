@@ -35,7 +35,8 @@ if (RAYMAN_RECOMP_SWITCH)
         -O2
         -fno-strict-aliasing
         -w
-        -include ${CMAKE_CURRENT_SOURCE_DIR}/runtime/cpu/ppc_overrides.h
+        $<$<COMPILE_LANGUAGE:CXX>:-include>
+        $<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/runtime/cpu/ppc_overrides.h>
     )
 
     # Platform-neutral runtime/kernel layer. Platform entry point, guest
