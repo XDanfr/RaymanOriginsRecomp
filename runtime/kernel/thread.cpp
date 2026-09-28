@@ -274,6 +274,14 @@ static uint32_t NtYieldExecution()
     return X_STATUS_SUCCESS;
 }
 
+// Exported by xboxkrnl as a callback placeholder.  The game calls it while
+// constructing its APC data, and the kernel implementation intentionally has
+// no observable work to perform.
+static uint32_t KiApcNormalRoutineNop()
+{
+    return 0;
+}
+
 // ---- TLS (igual ao Unleashed: vetor por thread) ----
 
 static std::mutex g_tlsMutex;
@@ -327,6 +335,7 @@ GUEST_FUNCTION_HOOK(__imp__KeQueryBasePriorityThread, KeQueryBasePriorityThread)
 GUEST_FUNCTION_HOOK(__imp__KeSetAffinityThread, KeSetAffinityThread);
 GUEST_FUNCTION_HOOK(__imp__KeDelayExecutionThread, KeDelayExecutionThread);
 GUEST_FUNCTION_HOOK(__imp__NtYieldExecution, NtYieldExecution);
+GUEST_FUNCTION_HOOK(__imp__KiApcNormalRoutineNop, KiApcNormalRoutineNop);
 GUEST_FUNCTION_HOOK(__imp__KeTlsAlloc, KeTlsAlloc);
 GUEST_FUNCTION_HOOK(__imp__KeTlsFree, KeTlsFree);
 GUEST_FUNCTION_HOOK(__imp__KeTlsGetValue, KeTlsGetValue);

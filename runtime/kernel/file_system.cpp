@@ -502,6 +502,33 @@ static uint64_t EffectiveOffset(const XFile& file, const be<uint64_t>* byteOffse
     return value == 0xFFFFFFFFFFFFFFFEull ? file.position : value;
 }
 
+// newlib on Switch exposes seek/read/write but not pread/pwrite.  Serialise
+// the seek-and-I/O pair so the guest's offset-based calls retain POSIX pread /
+// pwrite semantics when guest threads access different files concurrently.
+static ssize_t ReadAt(const XFile& file, void* buffer, size_t length, uint64_t offset)
+{
+#if defined(__SWITCH__)
+    std::lock_guard lock(g_fsMutex);
+    if (lseek(file.fd, static_cast<off_t>(offset), SEEK_SET) < 0)
+        return -1;
+    return read(file.fd, buffer, length);
+#else
+    return pread(file.fd, buffer, length, static_cast<off_t>(offset));
+#endif
+}
+
+static ssize_t WriteAt(const XFile& file, const void* buffer, size_t length, uint64_t offset)
+{
+#if defined(__SWITCH__)
+    std::lock_guard lock(g_fsMutex);
+    if (lseek(file.fd, static_cast<off_t>(offset), SEEK_SET) < 0)
+        return -1;
+    return write(file.fd, buffer, length);
+#else
+    return pwrite(file.fd, buffer, length, static_cast<off_t>(offset));
+#endif
+}
+
 static uint32_t NtReadFile(uint32_t fileHandle, uint32_t eventHandle, uint32_t apcRoutine, uint32_t apcContext,
                            XIO_STATUS_BLOCK* iosb, void* buffer, uint32_t length, be<uint64_t>* byteOffset)
 {
@@ -513,7 +540,7 @@ static uint32_t NtReadFile(uint32_t fileHandle, uint32_t eventHandle, uint32_t a
     }
 
     uint64_t offset = EffectiveOffset(*file, byteOffset);
-    ssize_t read = pread(file->fd, buffer, length, off_t(offset));
+    ssize_t read = ReadAt(*file, buffer, length, offset);
     uint32_t status = X_STATUS_SUCCESS;
     if (read < 0)
     {
@@ -549,7 +576,7 @@ static uint32_t NtReadFileScatter(uint32_t fileHandle, uint32_t eventHandle, uin
     for (uint32_t i = 0; total < length; i++)
     {
         uint32_t chunk = std::min<uint32_t>(0x1000, length - total);
-        ssize_t read = pread(file->fd, g_memory.Translate(segments[i].get()), chunk, off_t(offset + total));
+        ssize_t read = ReadAt(*file, g_memory.Translate(segments[i].get()), chunk, offset + total);
         if (read <= 0)
             break;
         total += uint32_t(read);
@@ -576,7 +603,7 @@ static uint32_t NtWriteFile(uint32_t fileHandle, uint32_t eventHandle, uint32_t 
     }
 
     uint64_t offset = EffectiveOffset(*file, byteOffset);
-    ssize_t written = pwrite(file->fd, buffer, length, off_t(offset));
+    ssize_t written = WriteAt(*file, buffer, length, offset);
     uint32_t status = written < 0 ? X_STATUS_UNSUCCESSFUL : X_STATUS_SUCCESS;
     if (written < 0)
         written = 0;

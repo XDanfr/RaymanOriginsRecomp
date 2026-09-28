@@ -1,4 +1,11 @@
+#include "host/platform.h"
+
+// libnx's runtime pad helper uses the same global type name as the
+// platform-neutral runtime input state.
+#define PadState LibnxPadState
 #include <switch.h>
+#undef PadState
+
 #include <cstdio>
 #include "memory.h"
 
@@ -17,6 +24,7 @@ void WaitForExit()
 int main()
 {
     consoleInit(nullptr);
+    InitPlatform();
 
     printf("Rayman Origins Recompiled\n");
     printf("Switch bootstrap OK\n");

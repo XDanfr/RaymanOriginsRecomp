@@ -48,6 +48,7 @@ if (RAYMAN_RECOMP_SWITCH)
         runtime/kernel/video_imports.cpp
         runtime/gpu/command_processor.cpp
         runtime/apu/audio.cpp
+        runtime/switch/platform.cpp
         runtime/switch/recomp_stubs.cpp
         thirdparty/o1heap/o1heap/o1heap.c
     )
@@ -67,6 +68,25 @@ if (RAYMAN_RECOMP_SWITCH)
 
     target_link_libraries(RaymanSwitchRuntimeCore PRIVATE RaymanRecompLib)
 
+    # The generated mapping references every XEX import, including imports that
+    # are intentionally unsupported during bring-up.  Keep the same weak
+    # fallback translation unit as the desktop target, but archive it so it is
+    # considered only after the real runtime hooks have been extracted.
+    set(RAYMAN_IMPORT_STUBS ${CMAKE_CURRENT_BINARY_DIR}/generated/import_stubs.cpp)
+    add_custom_command(
+        OUTPUT ${RAYMAN_IMPORT_STUBS}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/generated
+        COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_import_stubs.py ${PPC_DIR}/ppc_func_mapping.cpp ${RAYMAN_IMPORT_STUBS}
+        DEPENDS ${PPC_DIR}/ppc_func_mapping.cpp ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_import_stubs.py
+    )
+    add_library(RaymanImportFallbacks STATIC ${RAYMAN_IMPORT_STUBS})
+    target_include_directories(RaymanImportFallbacks PRIVATE
+        runtime
+        ${CMAKE_CURRENT_SOURCE_DIR}/runtime/kernel
+        ${PPC_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tools/XenonRecomp/thirdparty/simde
+    )
+
     add_executable(rayman_switch
         runtime/switch/main.cpp
     )
@@ -74,14 +94,22 @@ if (RAYMAN_RECOMP_SWITCH)
         runtime
         ${CMAKE_CURRENT_SOURCE_DIR}/runtime/kernel
     )
-    target_link_options(rayman_switch PRIVATE
-        "LINKER:--start-group"
-        "LINKER:--end-group"
-    )
 
+    # RaymanRecompLib needs the runtime import hooks, while the runtime's
+    # memory code needs the generated function map.  Put the archives inside
+    # one linker rescan group, rather than emitting an empty group as options.
     target_link_libraries(rayman_switch PRIVATE
+        "-Wl,--start-group"
         RaymanSwitchRuntimeCore
         RaymanRecompLib
+        "-Wl,--end-group"
+        # If a regenerated image introduces an import without a real hook,
+        # extract its weak fallback only after the primary runtime/recomp
+        # cycle.  The second group resolves LogImportStub from the runtime.
+        "-Wl,--start-group"
+        RaymanImportFallbacks
+        RaymanSwitchRuntimeCore
+        "-Wl,--end-group"
         nx
     )
 
