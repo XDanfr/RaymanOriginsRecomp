@@ -48,6 +48,7 @@ if (RAYMAN_RECOMP_SWITCH)
         runtime/kernel/video_imports.cpp
         runtime/gpu/command_processor.cpp
         runtime/apu/audio.cpp
+        runtime/switch/recomp_stubs.cpp
         thirdparty/o1heap/o1heap/o1heap.c
     )
 
