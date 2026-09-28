@@ -193,8 +193,9 @@ static int64_t DaysFromCivil(int64_t year, uint32_t month, uint32_t day)
     year -= month <= 2;
     const int64_t era = (year >= 0 ? year : year - 399) / 400;
     const uint32_t yearOfEra = uint32_t(year - era * 400);
+    const uint32_t monthPrime = month > 2 ? month - 3 : month + 9;
     const uint32_t dayOfYear =
-        (153 * (month + (month > 2 ? uint32_t(-3) : 9)) + 2) / 5 + day - 1;
+        (153 * monthPrime + 2) / 5 + day - 1;
     const uint32_t dayOfEra =
         yearOfEra * 365 + yearOfEra / 4 - yearOfEra / 100 + dayOfYear;
     return era * 146097 + int64_t(dayOfEra) - 719468;
