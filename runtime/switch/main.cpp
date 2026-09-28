@@ -1,5 +1,4 @@
 #include <switch.h>
-#include <switch/services/hid.h>
 #include <cstdio>
 #include "memory.h"
 
@@ -9,11 +8,6 @@ void WaitForExit()
 {
     while (appletMainLoop())
     {
-        hidScanInput();
-
-        if (hidKeysDown(CONTROLLER_P1_AUTO) & HidNpadButton_B)
-            break;
-
         consoleUpdate(nullptr);
         svcSleepThread(50'000'000);
     }
@@ -27,8 +21,6 @@ int main()
     printf("Rayman Origins Recompiled\n");
     printf("Switch bootstrap OK\n");
     printf("libnx + devkitA64 executable started successfully.\n\n");
-
-    padConfigureInput(1, HidNpadStyleSet_NpadStandard);
 
     printf("Initialising 4 GB guest address window...\n");
     consoleUpdate(nullptr);
@@ -73,7 +65,7 @@ int main()
 
     printf("Guest memory probe OK.\n");
     printf("4 GB sparse window + dynamic page mapping are working.\n\n");
-    printf("Press B to exit.\n");
+    printf("Return to the HOME menu to exit.\n");
     consoleUpdate(nullptr);
 
     WaitForExit();
