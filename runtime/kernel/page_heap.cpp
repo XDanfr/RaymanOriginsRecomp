@@ -21,9 +21,12 @@ bool PageHeap::RangeIs(uint32_t first, uint32_t count, State state) const
     return true;
 }
 
-void PageHeap::Commit(uint32_t first, uint32_t count, uint32_t protect)
+bool PageHeap::Commit(uint32_t first, uint32_t count, uint32_t protect)
 {
-    // O Xbox entrega páginas commitadas zeradas; só zeramos as que não estavam commitadas.
+    const size_t bytes = size_t(count) * pageSize_;
+    if (!g_memory.CommitRange(PageAddress(first), bytes))
+        return false;
+
     for (uint32_t i = first; i < first + count; i++)
     {
         if (state_[i] != Committed)
@@ -31,6 +34,8 @@ void PageHeap::Commit(uint32_t first, uint32_t count, uint32_t protect)
         state_[i] = Committed;
         protect_[i] = protect;
     }
+
+    return true;
 }
 
 uint32_t PageHeap::Alloc(uint32_t size, uint32_t alignment, bool commit, bool topDown, uint32_t protect)
@@ -47,7 +52,6 @@ uint32_t PageHeap::Alloc(uint32_t size, uint32_t alignment, bool commit, bool to
     if (count > total)
         return 0;
 
-    // Primeira página não livre em [i, i + count), ou UINT32_MAX se todas livres.
     auto firstUsed = [&](uint32_t i) -> uint32_t {
         for (uint32_t j = i; j < i + count; j++)
             if (state_[j] != Free)
@@ -69,7 +73,6 @@ uint32_t PageHeap::Alloc(uint32_t size, uint32_t alignment, bool commit, bool to
     }
     else
     {
-        // Next fit a partir da última reserva; se não couber, recomeça do início.
         for (uint32_t start : { hint_, 0u })
         {
             for (uint32_t i = alignUp(start); i + count <= total;)
@@ -87,6 +90,18 @@ uint32_t PageHeap::Alloc(uint32_t size, uint32_t alignment, bool commit, bool to
         return 0;
 
     const uint32_t address = PageAddress(found);
+
+    auto rollback = [&]()
+    {
+        for (uint32_t i = found; i < found + count; i++)
+        {
+            state_[i] = Free;
+            allocBase_[i] = 0;
+            protect_[i] = 0;
+        }
+        allocPages_[found] = 0;
+    };
+
     for (uint32_t i = found; i < found + count; i++)
     {
         state_[i] = Reserved;
@@ -94,15 +109,27 @@ uint32_t PageHeap::Alloc(uint32_t size, uint32_t alignment, bool commit, bool to
         protect_[i] = protect;
     }
     allocPages_[found] = count;
-    if (commit)
-        Commit(found, count, protect);
+
+    if (commit && !Commit(found, count, protect))
+    {
+        rollback();
+        return 0;
+    }
+
     if (!topDown)
         hint_ = found + count;
 
     return address;
 }
 
-bool PageHeap::AllocFixed(uint32_t address, uint32_t size, bool reserve, bool commit, uint32_t protect, bool* wasCommitted)
+bool PageHeap::AllocFixed(
+    uint32_t address,
+    uint32_t size,
+    bool reserve,
+    bool commit,
+    uint32_t protect,
+    bool* wasCommitted
+)
 {
     if (!Contains(address) || size == 0)
         return false;
@@ -117,11 +144,13 @@ bool PageHeap::AllocFixed(uint32_t address, uint32_t size, bool reserve, bool co
     if (wasCommitted)
         *wasCommitted = RangeIs(first, count, Committed);
 
+    bool newReservation = false;
+
     if (RangeIs(first, count, Free))
     {
-        // Endereço livre: precisa de MEM_RESERVE (reserva nova no lugar pedido).
         if (!reserve)
             return false;
+
         const uint32_t regionBase = PageAddress(first);
         for (uint32_t i = first; i < first + count; i++)
         {
@@ -130,17 +159,30 @@ bool PageHeap::AllocFixed(uint32_t address, uint32_t size, bool reserve, bool co
             protect_[i] = protect;
         }
         allocPages_[first] = count;
+        newReservation = true;
     }
     else
     {
-        // Dentro de reserva existente: todas as páginas precisam estar reservadas ou commitadas.
         for (uint32_t i = first; i < first + count; i++)
             if (state_[i] == Free)
                 return false;
     }
 
-    if (commit)
-        Commit(first, count, protect);
+    if (commit && !Commit(first, count, protect))
+    {
+        if (newReservation)
+        {
+            for (uint32_t i = first; i < first + count; i++)
+            {
+                state_[i] = Free;
+                allocBase_[i] = 0;
+                protect_[i] = 0;
+            }
+            allocPages_[first] = 0;
+        }
+        return false;
+    }
+
     return true;
 }
 
@@ -151,10 +193,15 @@ bool PageHeap::Decommit(uint32_t address, uint32_t size)
 
     std::lock_guard lock(mutex_);
     const uint32_t first = PageIndex(address);
-    const uint32_t count = std::min<uint32_t>((size + pageSize_ - 1) / pageSize_, uint32_t(state_.size()) - first);
+    const uint32_t count = std::min<uint32_t>(
+        (size + pageSize_ - 1) / pageSize_,
+        uint32_t(state_.size()) - first
+    );
+
     for (uint32_t i = first; i < first + count; i++)
         if (state_[i] == Committed)
             state_[i] = Reserved;
+
     return true;
 }
 
@@ -167,7 +214,7 @@ bool PageHeap::Release(uint32_t address, uint32_t* releasedSize)
     const uint32_t first = PageIndex(address);
     const uint32_t count = allocPages_[first];
     if (count == 0 || allocBase_[first] != PageAddress(first))
-        return false; // só dá para liberar a partir do início da reserva
+        return false;
 
     for (uint32_t i = first; i < first + count; i++)
     {
@@ -178,6 +225,7 @@ bool PageHeap::Release(uint32_t address, uint32_t* releasedSize)
     allocPages_[first] = 0;
     if (releasedSize)
         *releasedSize = count * pageSize_;
+
     return true;
 }
 
@@ -189,9 +237,15 @@ bool PageHeap::Query(uint32_t address, RegionInfo& out) const
     std::lock_guard lock(mutex_);
     const uint32_t first = PageIndex(address);
     uint32_t last = first;
-    while (last + 1 < state_.size() && state_[last + 1] == state_[first] &&
-           allocBase_[last + 1] == allocBase_[first] && protect_[last + 1] == protect_[first])
+    while (
+        last + 1 < state_.size() &&
+        state_[last + 1] == state_[first] &&
+        allocBase_[last + 1] == allocBase_[first] &&
+        protect_[last + 1] == protect_[first]
+    )
+    {
         last++;
+    }
 
     out.baseAddress = PageAddress(first);
     out.allocationBase = allocBase_[first];
