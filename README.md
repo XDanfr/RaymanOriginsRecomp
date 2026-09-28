@@ -53,7 +53,29 @@ Switch-specific research and the living port checklist are documented in:
 - [docs/SWITCH_RENDERER.md](docs/SWITCH_RENDERER.md)
 - [docs/SWITCH_STATUS.md](docs/SWITCH_STATUS.md)
 
-The Switch port is currently in the build-system/runtime groundwork stage. It is not yet a playable Switch build.
+The Switch port is currently in runtime bring-up. The devkitA64 CMake target configures successfully, all 206 generated PPC translation units compile for AArch64, and the recompiled game code links into a Switch-side static library. The remaining work is the platform runtime, memory mapping, Vulkan/NVK presentation, input, audio, application entry point and NRO packaging. It is not yet a playable Switch build.
+
+### Switch development build
+
+The Switch target is developed with devkitA64 + libnx through the `switch-devkitA64` CMake preset. The normal workflow keeps the game dump private and regenerates the recompiled sources locally.
+
+Requirements:
+
+- devkitPro with devkitA64 and libnx
+- CMake and Ninja
+- the repository submodules
+- your own Xbox 360 copy of Rayman Origins, with `private/game/default.xex`
+
+From the repository root:
+
+```sh
+git submodule update --init --recursive
+sh tools/regen_config.sh
+cmake --preset switch-devkitA64
+cmake --build --preset switch-devkitA64
+```
+
+The current preset is an active development target, so a successful build currently means reaching the next unfinished Switch runtime component rather than producing a playable `.nro`.
 
 ## Roadmap
 
