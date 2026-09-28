@@ -4,85 +4,74 @@
 
 The Xbox 360 executable expects a guest address space that does not map directly onto a normal desktop process.
 
-The Rayman runtime currently provides guest memory on the host. The Switch port needs to preserve the guest-visible layout while working within Horizon's virtual-memory and heap model.
-
-This is one of the highest-risk parts of the port.
+The Rayman runtime now provides the first Switch-specific bridge for that model. The process reserves a 4 GB guest-address window through libnx virtual-memory helpers, while only explicitly committed regions receive backing mappings.
 
 ## Reference approach
 
-MarathonRecomp-NX uses Switch process-memory SVCs exposed by libnx to map guest regions into the process address space.
+MarathonRecomp-NX and UnleashedRecomp-NX use Switch process-memory SVCs exposed by libnx to map guest regions into the process address space.
 
-The relevant Horizon operations used by that project include:
+The relevant Horizon operations are:
 
 - svcMapProcessMemory
 - svcUnmapProcessMemory
 - svcMapProcessCodeMemory
 - svcUnmapProcessCodeMemory
 
-It also locates a large virtual address region with libnx virtual-memory helpers before committing mappings.
+The Rayman implementation adapts the same primitive behind GuestMemory::CommitRange() instead of importing another project's memory allocator wholesale.
 
-The exact implementation should be treated as a reference, not copied wholesale. Rayman's guest layout and runtime allocation patterns need to be measured first.
+## Current implementation
 
-## Questions to answer
+GuestMemory::Init() now:
 
-### Address reservation
+1. verifies that the required process-memory SVCs are available
+2. finds a page-aligned 4 GB ASLR window with virtmemFindAslr()
+3. reserves that window with virtmemAddReservation()
+4. allocates a per-page commit bitmap
+5. commits the initial low-memory region while leaving page zero unmapped
+6. commits the generated XEX image/lookup region before registering PPCFuncMappings
 
-- What virtual address range does Rayman currently reserve?
-- How large is the guest address space?
-- Which ranges are actually touched during startup?
-- Does the recompiled code contain absolute guest addresses that require fixed placement?
+GuestMemory::CommitRange() then maps each previously uncommitted run by:
 
-### Backing storage
+1. allocating page-aligned backing storage
+2. finding a code-memory alias with virtmemFindCodeMemory()
+3. mapping the backing storage with svcMapProcessCodeMemory()
+4. giving the alias RW permission
+5. mapping the alias into the guest window with svcMapProcessMemory()
+6. retaining the backing and alias handles for the lifetime of the process
 
-- Which regions need committed physical backing?
-- Which regions can remain sparse?
-- Can heap-backed mappings satisfy the current allocator?
-- Does the runtime need executable mappings for generated/recompiled code?
+The page allocator now calls this backend before marking Xbox pages committed.
 
-### Allocation
+## What is intentionally not solved yet
 
-Audit use of:
+The first backend does not yet implement physical unmapping on Decommit()/Release(), and it does not yet size the runtime heap around the Switch application's physical-memory budget.
 
-- mmap
-- mprotect
-- munmap
-- executable memory
-- guard pages
-- page-size constants
+That is deliberate. We want the first hardware probe to establish that the virtual reservation, sparse mapping and guest addressing primitive are sound before tuning the allocator or trying to boot the game.
 
-Any Switch implementation should preserve the semantics expected by the recompiled code rather than merely replacing calls one-for-one.
+## First hardware experiment
 
-## Recommended implementation boundary
+The Switch bootstrap executable now:
 
-    guest allocator
-         |
-         v
-    platform memory provider
-      +-- desktop
-      +-- Android
-      +-- Switch/libnx
+1. starts under libnx
+2. reserves the 4 GB guest window
+3. commits a single page outside the initial bootstrap range
+4. writes 0x5241594D (RAYM) through a guest pointer
+5. reads it back
+6. waits for B
 
-The platform implementation should own Horizon-specific virtual-memory operations.
+A successful run validates the first real Horizon memory primitive. Failure output should be treated as implementation diagnostics, not as evidence that the full game runtime is ready.
 
 ## Important constraint
 
-Do not reserve the entire expected guest range blindly and only discover later that the application's heap has been starved.
+Do not reserve the entire expected guest range blindly and then discover that the application's heap has been starved.
 
-Other Switch XenonRecomp ports have adjusted the default application heap because guest mappings and backing allocations consume the same physical memory budget.
+The current implementation intentionally keeps the 4 GB address window sparse. The final heap split should be derived from actual Rayman startup requirements and measured on hardware.
 
-The final heap split should be derived from actual Rayman startup requirements and measured on hardware.
+## Next memory work
 
-## First experiment
+After the bootstrap probe works, the next memory tasks are:
 
-The first useful memory experiment is not booting the whole game.
-
-Build a tiny Switch test executable that:
-
-1. starts under libnx
-2. finds a suitably aligned virtual address range
-3. maps a small guest window
-4. writes and reads through it
-5. unmaps it
-6. repeats with increasingly large regions
-
-Then integrate the same primitive into the Rayman runtime.
+- add safe cleanup/unmapping
+- commit exactly the regions required by the XEX loader and runtime heap
+- audit fixed-address allocations
+- audit executable/code mappings
+- measure physical-memory use on real hardware
