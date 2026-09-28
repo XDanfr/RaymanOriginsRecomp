@@ -186,19 +186,43 @@ static void RtlTimeToTimeFields(be<int64_t>* time, X_TIME_FIELDS* fields)
     fields->weekday = uint16_t(tm.tm_wday);
 }
 
+// Convert a proleptic Gregorian calendar date to Unix days without relying on
+// the host's timezone database or the non-standard timegm() extension.
+static int64_t DaysFromCivil(int64_t year, uint32_t month, uint32_t day)
+{
+    year -= month <= 2;
+    const int64_t era = (year >= 0 ? year : year - 399) / 400;
+    const uint32_t yearOfEra = uint32_t(year - era * 400);
+    const uint32_t dayOfYear =
+        (153 * (month + (month > 2 ? uint32_t(-3) : 9)) + 2) / 5 + day - 1;
+    const uint32_t dayOfEra =
+        yearOfEra * 365 + yearOfEra / 4 - yearOfEra / 100 + dayOfYear;
+    return era * 146097 + int64_t(dayOfEra) - 719468;
+}
+
 static uint32_t RtlTimeFieldsToTime(X_TIME_FIELDS* fields, be<int64_t>* time)
 {
-    struct tm tm{};
-    tm.tm_year = fields->year.get() - 1900;
-    tm.tm_mon = fields->month.get() - 1;
-    tm.tm_mday = fields->day.get();
-    tm.tm_hour = fields->hour.get();
-    tm.tm_min = fields->minute.get();
-    tm.tm_sec = fields->second.get();
-    time_t seconds = timegm(&tm);
-    if (seconds == time_t(-1))
+    const uint32_t month = fields->month.get();
+    const uint32_t day = fields->day.get();
+    const uint32_t hour = fields->hour.get();
+    const uint32_t minute = fields->minute.get();
+    const uint32_t second = fields->second.get();
+    const uint32_t milliseconds = fields->milliseconds.get();
+
+    if (month < 1 || month > 12 ||
+        day < 1 || day > 31 ||
+        hour > 23 || minute > 59 || second > 59 || milliseconds > 999)
         return 0;
-    time->set((int64_t(seconds) * 1000 + fields->milliseconds.get()) * 10000 + FILETIME_EPOCH_DIFFERENCE);
+
+    const int64_t unixSeconds =
+        DaysFromCivil(fields->year.get(), month, day) * 86400 +
+        int64_t(hour) * 3600 +
+        int64_t(minute) * 60 +
+        int64_t(second);
+
+    time->set(unixSeconds * 10000000 +
+              int64_t(milliseconds) * 10000 +
+              FILETIME_EPOCH_DIFFERENCE);
     return 1;
 }
 
