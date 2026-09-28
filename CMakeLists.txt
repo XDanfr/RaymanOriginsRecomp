@@ -73,9 +73,15 @@ if (RAYMAN_RECOMP_SWITCH)
         runtime
         ${CMAKE_CURRENT_SOURCE_DIR}/runtime/kernel
     )
+    target_link_options(rayman_switch PRIVATE
+        "LINKER:--start-group"
+        "LINKER:--end-group"
+    )
+
     target_link_libraries(rayman_switch PRIVATE
         RaymanSwitchRuntimeCore
         RaymanRecompLib
+        nx
     )
 
     find_program(RAYMAN_ELF2NRO elf2nro
