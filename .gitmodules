@@ -1,6 +1,6 @@
 [submodule "tools/XenonRecomp"]
 	path = tools/XenonRecomp
-	url = https://github.com/BelmanteGu/XenonRecomp.git
+	url = https://github.com/XDanfr/XenonRecomp.git
 	branch = rayman-port
 [submodule "thirdparty/o1heap"]
 	path = thirdparty/o1heap
