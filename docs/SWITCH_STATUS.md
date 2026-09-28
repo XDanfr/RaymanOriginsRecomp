@@ -15,18 +15,18 @@ Legend:
 - [x] Switch architecture documented
 - [x] Switch memory notes documented
 - [x] Switch renderer notes documented
-- [ ] devkitA64 toolchain integrated into CMake
-- [ ] host-only generation build separated from Switch target
-- [ ] Switch CMake configure succeeds
-- [ ] Switch target compiles
+- [x] devkitA64 toolchain integrated into CMake
+- [~] host-only generation workflow kept separate from the Switch target
+- [x] Switch CMake configure succeeds
+- [~] Switch target compiles: the generated game library builds; Switch runtime is still in bring-up
 - [ ] NRO packaging works
 - [ ] reproducible Switch build instructions
 
 ## Recompilation
 
-- [ ] Rayman-specific XenonRecomp branch confirmed suitable for AArch64 Switch
-- [ ] ARM64 recompilation succeeds using the current configuration
-- [ ] generated PPC source is accepted by devkitA64
+- [x] Rayman-specific XenonRecomp branch confirmed suitable for AArch64 Switch
+- [x] ARM64 recompilation succeeds using the current configuration
+- [x] generated PPC source is accepted by devkitA64
 - [ ] Switch-specific XenonRecomp changes identified
 - [ ] custom Switch XenonRecomp fork created only if required
 
