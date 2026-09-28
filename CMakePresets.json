@@ -3,7 +3,7 @@
   "configurePresets": [
     {
       "name": "macos-llvm",
-      "displayName": "macOS arm64 — LLVM 23 (tools/llvm)",
+      "displayName": "macOS arm64 - LLVM 23 (tools/llvm)",
       "description": "Clang 18+ exigido pelo XenonRecomp. Usa lld (o /usr/bin/ld do sistema aborta ao carregar o libLTO do LLVM 23) e os headers da libc++ do SDK: os do LLVM 23 exigem símbolos que a libc++ do macOS 14 não tem, e linkar a libc++ do LLVM mistura duas libc++ no processo.",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build",
@@ -18,9 +18,28 @@
         "CMAKE_OBJCXX_FLAGS": "-fuse-ld=lld -Wno-unused-command-line-argument",
         "CMAKE_CXX_FLAGS": "-fuse-ld=lld -Wno-unused-command-line-argument -nostdinc++ -isystem /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1"
       }
+    },
+    {
+      "name": "switch-devkitA64",
+      "displayName": "Nintendo Switch - devkitA64",
+      "description": "Build the AArch64 recompiled Rayman code as a Switch static library with devkitA64/libnx.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-switch",
+      "toolchainFile": "${sourceDir}/toolchains/switch-devkitA64.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "RAYMAN_RECOMP_SWITCH": "ON"
+      }
     }
   ],
   "buildPresets": [
-    { "name": "macos-llvm", "configurePreset": "macos-llvm" }
+    {
+      "name": "macos-llvm",
+      "configurePreset": "macos-llvm"
+    },
+    {
+      "name": "switch-devkitA64",
+      "configurePreset": "switch-devkitA64"
+    }
   ]
 }
