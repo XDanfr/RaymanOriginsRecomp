@@ -65,13 +65,13 @@ if (RAYMAN_RECOMP_SWITCH)
         runtime
         ${CMAKE_CURRENT_SOURCE_DIR}/runtime/kernel
         ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/o1heap/o1heap
+        ${CMAKE_CURRENT_SOURCE_DIR}/tools/XenonRecomp/XenonUtils
     )
 
     target_compile_options(RaymanSwitchRuntimeCore PRIVATE
         -O1
         -fno-strict-aliasing
         -w
-        -include ${CMAKE_CURRENT_SOURCE_DIR}/runtime/cpu/ppc_overrides.h
     )
 
     target_link_libraries(RaymanSwitchRuntimeCore PRIVATE RaymanRecompLib)
