@@ -7,6 +7,7 @@
 #include <cassert>
 #include <tuple>
 #include <type_traits>
+#include <xbox.h>
 #include "cpu/guest_context.h"
 #include "memory.h"
 
