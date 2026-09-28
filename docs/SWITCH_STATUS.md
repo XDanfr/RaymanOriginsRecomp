@@ -44,7 +44,8 @@ Legend:
 - [ ] filesystem paths
 - [ ] file reads
 - [ ] file mapping if required
-- [ ] XEX/XAM assumptions audited
+- [x] default XEX image decode/load and generated entry-point mapping
+- [~] XEX/XAM assumptions audited
 - [ ] crash/exception handling
 - [ ] unresolved import behaviour audited
 
@@ -88,9 +89,10 @@ The probe was validated on HOS 22.5.0 with Atmosphère 1.11.2 in full-applicatio
 ## Game boot milestones
 
 - [x] NRO packages and launches on hardware
-- [ ] runtime initializes
-- [ ] game files are found
-- [ ] recompiled entry point runs
+- [~] runtime initializes (memory and XEX bootstrap only)
+- [~] game executable is found and loaded
+- [x] generated recompiled entry-point mapping verified
+- [ ] guest thread starts and calls the recompiled entry point
 - [ ] menu/home screen appears
 - [ ] first level loads
 - [ ] player can move

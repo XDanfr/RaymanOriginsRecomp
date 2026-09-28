@@ -7,6 +7,7 @@
 #undef PadState
 
 #include <cstdio>
+#include "loader.h"
 #include "memory.h"
 
 namespace
@@ -21,7 +22,7 @@ void WaitForExit()
 }
 }
 
-int main()
+int main(int argc, char** argv)
 {
     consoleInit(nullptr);
     InitPlatform();
@@ -45,6 +46,8 @@ int main()
 
     constexpr uint32_t probeAddress = 0x00020000;
     constexpr uint32_t probeValue = 0x5241594Du;
+    constexpr const char* defaultXexPath =
+        "sdmc:/switch/RaymanOriginsRecomp/game/default.xex";
 
     printf("Guest window reserved. Testing a dynamic page commit...\n");
     consoleUpdate(nullptr);
@@ -73,6 +76,35 @@ int main()
 
     printf("Guest memory probe OK.\n");
     printf("4 GB sparse window + dynamic page mapping are working.\n\n");
+
+    const char* xexPath = argc > 1 ? argv[1] : defaultXexPath;
+    printf("Loading XEX image: %s\n", xexPath);
+    consoleUpdate(nullptr);
+
+    LoadedImage image;
+    if (!LoadXexImage(xexPath, g_memory.base, image))
+    {
+        printf("XEX image load FAILED.\n");
+        printf("Copy your own default.xex to:\n%s\n", defaultXexPath);
+        consoleUpdate(nullptr);
+        WaitForExit();
+        consoleExit(nullptr);
+        return 1;
+    }
+
+    if (g_memory.FindFunction(image.entryPoint) == nullptr)
+    {
+        printf("XEX entry point 0x%08X has no generated mapping.\n", image.entryPoint);
+        consoleUpdate(nullptr);
+        WaitForExit();
+        consoleExit(nullptr);
+        return 1;
+    }
+
+    printf("XEX image loaded: 0x%08X..0x%08X\n",
+           image.base, image.base + image.size);
+    printf("Generated entry mapping found: 0x%08X\n", image.entryPoint);
+    printf("Guest entry point is intentionally not called yet.\n\n");
     printf("Return to the HOME menu to exit.\n");
     consoleUpdate(nullptr);
 

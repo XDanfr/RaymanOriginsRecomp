@@ -2,13 +2,14 @@
 #include "loader.h"
 #include <cstdio>
 #include <cstring>
+#include "memory.h"
 #include <file.h>
 #include <image.h>
 
 bool LoadXexImage(const char* path, uint8_t* guestBase, LoadedImage& out)
 {
     auto file = LoadFile(path);
-    if (file.empty())
+    if (file.size() < 4)
     {
         fprintf(stderr, "[loader] não consegui ler %s\n", path);
         return false;
@@ -18,6 +19,19 @@ bool LoadXexImage(const char* path, uint8_t* guestBase, LoadedImage& out)
     if (image.data == nullptr || image.size == 0)
     {
         fprintf(stderr, "[loader] XEX inválido: %s\n", path);
+        return false;
+    }
+
+    if (image.base > UINT32_MAX ||
+        image.size > PPC_MEMORY_SIZE - static_cast<uint32_t>(image.base))
+    {
+        fprintf(stderr, "[loader] imagem fora do espaço do guest: %s\n", path);
+        return false;
+    }
+
+    if (!g_memory.CommitRange(static_cast<uint32_t>(image.base), image.size))
+    {
+        fprintf(stderr, "[loader] não consegui mapear a imagem no guest: %s\n", path);
         return false;
     }
 

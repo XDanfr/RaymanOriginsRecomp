@@ -130,7 +130,7 @@ Both demonstrate the general pattern of host generation tools, a dedicated devki
 
 The first Switch bootstrap milestone is complete: the retail `default.xex` expected by the project is accepted by the existing regeneration tooling, generated PPC translation units compile with devkitA64, CMake links the recompiled and Switch runtime libraries into `rayman_switch`, and `elf2nro` packages `RaymanOrigins.nro` with NACP metadata. The NRO has started on hardware and validated sparse 4 GB guest-memory reservation plus a dynamic guest-page commit/read-write probe.
 
-The work now moves from bootstrap validation into the game startup path: XEX/image loading, guest thread startup, filesystem/process assumptions, Vulkan/NVK presentation, input, and audio. XenonRecomp output generation and basic NRO packaging are no longer the immediate blockers.
+The XEX/image stage is also validated: the Switch bootstrap decodes the user's `default.xex` into guest memory and confirms that its entry point resolves to the generated `_xstart` mapping. The next step is guest-thread startup; filesystem/process assumptions, Vulkan/NVK presentation, input, and audio remain ahead. XenonRecomp output generation and basic NRO packaging are no longer the immediate blockers.
 
 The branch should remain buildable as a Switch development target throughout this work. A successful NRO bootstrap is useful progress, but it is not yet a playable Switch port.
 

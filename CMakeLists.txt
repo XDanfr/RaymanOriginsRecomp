@@ -33,6 +33,8 @@ if (RAYMAN_RECOMP_SWITCH)
 
     add_library(RaymanSwitchRuntimeCore STATIC
         runtime/memory.cpp
+        runtime/loader.cpp
+        runtime/xex_lzx.cpp
         runtime/kernel/stub_log.cpp
         runtime/kernel/heap.cpp
         runtime/kernel/page_heap.cpp
@@ -50,6 +52,10 @@ if (RAYMAN_RECOMP_SWITCH)
         runtime/apu/audio.cpp
         runtime/switch/platform.cpp
         runtime/switch/recomp_stubs.cpp
+        tools/XenonRecomp/XenonUtils/image.cpp
+        tools/XenonRecomp/XenonUtils/xex.cpp
+        tools/XenonRecomp/thirdparty/libmspack/libmspack/mspack/lzxd.c
+        tools/XenonRecomp/thirdparty/tiny-AES-c/aes.c
         thirdparty/o1heap/o1heap/o1heap.c
     )
 
@@ -58,6 +64,9 @@ if (RAYMAN_RECOMP_SWITCH)
         ${CMAKE_CURRENT_SOURCE_DIR}/runtime/kernel
         ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/o1heap/o1heap
         ${CMAKE_CURRENT_SOURCE_DIR}/tools/XenonRecomp/XenonUtils
+        ${CMAKE_CURRENT_SOURCE_DIR}/tools/XenonRecomp/thirdparty/libmspack/libmspack/mspack
+        ${CMAKE_CURRENT_SOURCE_DIR}/tools/XenonRecomp/thirdparty/tiny-AES-c
+        ${CMAKE_CURRENT_SOURCE_DIR}/tools/XenonRecomp/thirdparty/TinySHA1
     )
 
     target_compile_options(RaymanSwitchRuntimeCore PRIVATE
