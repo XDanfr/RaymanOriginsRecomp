@@ -12,6 +12,7 @@ recomp/recomp.log
 
 # ---- Build and downloaded toolchains ----
 build/
+build-switch/
 tools/llvm/
 tools/XenonRecomp/build/
 tools/diag/diag

@@ -53,7 +53,7 @@ Switch-specific research and the living port checklist are documented in:
 - [docs/SWITCH_RENDERER.md](docs/SWITCH_RENDERER.md)
 - [docs/SWITCH_STATUS.md](docs/SWITCH_STATUS.md)
 
-The Switch port is currently in runtime bring-up. The devkitA64 CMake target configures successfully, all 206 generated PPC translation units compile for AArch64, and the recompiled game code links into a Switch-side static library. The remaining work is the platform runtime, memory mapping, Vulkan/NVK presentation, input, audio, application entry point and NRO packaging. It is not yet a playable Switch build.
+The Switch port is currently in runtime bring-up. The devkitA64 CMake target builds the generated PPC code, Switch runtime, `rayman_switch`, and `RaymanOrigins.nro`. The NRO has been validated on hardware: libnx starts, the sparse 4 GB guest-address window is reserved, and a dynamically committed guest page passes a read/write probe. The remaining work is the XEX startup path, guest threads, filesystem, Vulkan/NVK presentation, input, and audio. It is not yet a playable Switch build.
 
 ### Switch development build
 
@@ -75,7 +75,7 @@ cmake --preset switch-devkitA64
 cmake --build --preset switch-devkitA64
 ```
 
-The current preset is an active development target, so a successful build currently means reaching the next unfinished Switch runtime component rather than producing a playable `.nro`.
+The successful build produces `build-switch/RaymanOrigins.nro`. It is an active development bootstrap, not yet a playable game.
 
 ## Roadmap
 

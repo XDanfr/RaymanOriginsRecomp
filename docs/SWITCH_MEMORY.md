@@ -56,9 +56,9 @@ The Switch bootstrap executable now:
 3. commits a single page outside the initial bootstrap range
 4. writes 0x5241594D (RAYM) through a guest pointer
 5. reads it back
-6. waits for B
+6. waits for the user to return to HOME
 
-A successful run validates the first real Horizon memory primitive. Failure output should be treated as implementation diagnostics, not as evidence that the full game runtime is ready.
+This probe has been validated on hardware: the window was reserved and preserved, the dynamic page commit succeeded, and the guest-addressed value round-tripped correctly. That validates the first real Horizon memory primitive; it is not evidence that the full game runtime is ready.
 
 ## Important constraint
 

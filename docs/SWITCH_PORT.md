@@ -128,10 +128,10 @@ Both demonstrate the general pattern of host generation tools, a dedicated devki
 
 ## Current state
 
-The first Switch build milestone is complete: the retail `default.xex` expected by the project is accepted by the existing regeneration tooling, all generated PPC translation units compile with devkitA64, and CMake links them into `libRaymanRecompLib.a`. The current work is moving from generated-code compatibility into the actual Switch runtime.
+The first Switch bootstrap milestone is complete: the retail `default.xex` expected by the project is accepted by the existing regeneration tooling, generated PPC translation units compile with devkitA64, CMake links the recompiled and Switch runtime libraries into `rayman_switch`, and `elf2nro` packages `RaymanOrigins.nro` with NACP metadata. The NRO has started on hardware and validated sparse 4 GB guest-memory reservation plus a dynamic guest-page commit/read-write probe.
 
-That means the next blockers are expected to be genuine platform integration problems rather than recompiler output generation: guest memory mapping, threads and synchronization, filesystem/process assumptions, application startup, Vulkan/NVK presentation, input, audio and finally NRO packaging.
+The work now moves from bootstrap validation into the game startup path: XEX/image loading, guest thread startup, filesystem/process assumptions, Vulkan/NVK presentation, input, and audio. XenonRecomp output generation and basic NRO packaging are no longer the immediate blockers.
 
-The branch should remain buildable as a Switch development target throughout this work. A successful static-library build is useful progress, but it is not yet a playable Switch port.
+The branch should remain buildable as a Switch development target throughout this work. A successful NRO bootstrap is useful progress, but it is not yet a playable Switch port.
 
 See [SWITCH_STATUS.md](SWITCH_STATUS.md) for the living checklist.

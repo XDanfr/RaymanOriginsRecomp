@@ -19,8 +19,9 @@ Legend:
 - [~] host-only generation workflow kept separate from the Switch target
 - [x] Switch CMake configure succeeds
 - [x] Switch target compiles: the generated game library and Switch runtime core now build
-- [~] NRO packaging target added; hardware launch still needs verification
-- [ ] reproducible Switch build instructions
+- [x] NRO packaging target emits `RaymanOrigins.nro` with NACP metadata and icon
+- [x] NRO launch verified on hardware
+- [~] reproducible Switch build instructions
 
 ## Recompilation
 
@@ -33,8 +34,8 @@ Legend:
 ## Runtime
 
 - [x] Switch application entry point
-- [~] guest memory reservation
-- [~] guest memory mapping/commit
+- [x] sparse 4 GB guest-memory reservation
+- [x] dynamic guest page mapping/commit and guest-addressed read/write probe
 - [ ] page protection handling
 - [ ] thread creation
 - [ ] thread priority / affinity policy
@@ -47,7 +48,9 @@ Legend:
 - [ ] crash/exception handling
 - [ ] unresolved import behaviour audited
 
-The current Switch executable is a bring-up probe rather than a game launcher. It reserves a sparse 4 GB guest window, commits the generated image/lookup region plus a small dynamic test page, and performs a guest-addressed read/write before waiting for B.
+The current Switch executable is a bring-up probe rather than a game launcher. Hardware validation confirmed that it starts through libnx, reserves a sparse 4 GB guest window, commits the generated image/lookup region plus a small dynamic test page, and performs a guest-addressed read/write before waiting for the user to return to HOME.
+
+The probe was validated on HOS 22.5.0 with Atmosphère 1.11.2 in full-application mode. When using Sphaira through a forwarder, recreate the forwarder after updating Sphaira so its embedded NRO loader includes the current launch fixes.
 
 ## Input
 
@@ -84,7 +87,7 @@ The current Switch executable is a bring-up probe rather than a game launcher. I
 
 ## Game boot milestones
 
-- [~] NRO launches once hardware verifies the bring-up target
+- [x] NRO packages and launches on hardware
 - [ ] runtime initializes
 - [ ] game files are found
 - [ ] recompiled entry point runs
