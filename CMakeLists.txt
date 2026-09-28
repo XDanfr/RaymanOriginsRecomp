@@ -119,14 +119,34 @@ if (RAYMAN_RECOMP_SWITCH)
             "$ENV{DEVKITPRO}/tools/bin"
         REQUIRED
     )
+    find_program(RAYMAN_NACPTOOL nacptool
+        HINTS
+            "${DEVKITPRO}/tools/bin"
+            "$ENV{DEVKITPRO}/tools/bin"
+        REQUIRED
+    )
 
     set(RAYMAN_NRO "${CMAKE_CURRENT_BINARY_DIR}/RaymanOrigins.nro")
+    set(RAYMAN_NACP "${CMAKE_CURRENT_BINARY_DIR}/RaymanOrigins.nacp")
+    set(RAYMAN_NRO_ICON "${DEVKITPRO}/libnx/default_icon.jpg")
 
     add_custom_command(
-        TARGET rayman_switch POST_BUILD
+        OUTPUT ${RAYMAN_NACP}
+        COMMAND ${RAYMAN_NACPTOOL} --create
+            "Rayman Origins Recomp"
+            "Rayman Origins Recomp"
+            "0.1.0"
+            ${RAYMAN_NACP}
+        VERBATIM
+    )
+
+    add_custom_command(
+        OUTPUT ${RAYMAN_NRO}
         COMMAND ${CMAKE_COMMAND} -E echo "Packaging $<TARGET_FILE:rayman_switch> -> ${RAYMAN_NRO}"
         COMMAND ${RAYMAN_ELF2NRO} $<TARGET_FILE:rayman_switch> ${RAYMAN_NRO}
-        BYPRODUCTS ${RAYMAN_NRO}
+            --nacp=${RAYMAN_NACP}
+            --icon=${RAYMAN_NRO_ICON}
+        DEPENDS rayman_switch ${RAYMAN_NACP}
         VERBATIM
     )
 
