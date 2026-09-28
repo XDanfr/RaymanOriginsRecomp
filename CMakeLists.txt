@@ -51,6 +51,7 @@ if (RAYMAN_RECOMP_SWITCH)
         runtime/gpu/command_processor.cpp
         runtime/apu/audio.cpp
         runtime/switch/platform.cpp
+        runtime/switch/guest_bootstrap.cpp
         runtime/switch/recomp_stubs.cpp
         tools/XenonRecomp/XenonUtils/image.cpp
         tools/XenonRecomp/XenonUtils/xex.cpp
@@ -102,6 +103,7 @@ if (RAYMAN_RECOMP_SWITCH)
     target_include_directories(rayman_switch PRIVATE
         runtime
         ${CMAKE_CURRENT_SOURCE_DIR}/runtime/kernel
+        ${CMAKE_CURRENT_SOURCE_DIR}/tools/XenonRecomp/XenonUtils
     )
 
     # RaymanRecompLib needs the runtime import hooks, while the runtime's

@@ -11,7 +11,7 @@ constexpr uint32_t RUNTIME_HEAP_BASE = 0x90000000;
 constexpr uint32_t RUNTIME_HEAP_SIZE = 0x10000000;
 
 // Cria os heaps do guest. Chamar depois de g_memory.Init().
-void InitGuestHeaps();
+bool InitGuestHeaps();
 
 // Memória física zerada para estruturas lidas pelo hardware (contextos XMA, etc.).
 uint32_t AllocatePhysicalMemory(uint32_t size, uint32_t alignment);

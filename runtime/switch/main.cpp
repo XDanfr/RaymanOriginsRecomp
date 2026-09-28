@@ -9,6 +9,8 @@
 #include <cstdio>
 #include "loader.h"
 #include "memory.h"
+#include "kernel/memory_layout.h"
+#include "switch/guest_bootstrap.h"
 
 namespace
 {
@@ -104,6 +106,31 @@ int main(int argc, char** argv)
     printf("XEX image loaded: 0x%08X..0x%08X\n",
            image.base, image.base + image.size);
     printf("Generated entry mapping found: 0x%08X\n", image.entryPoint);
+    printf("Initialising sparse guest runtime heap...\n");
+    consoleUpdate(nullptr);
+
+    if (!InitGuestHeaps())
+    {
+        printf("Guest runtime heap initialisation FAILED.\n");
+        consoleUpdate(nullptr);
+        WaitForExit();
+        consoleExit(nullptr);
+        return 1;
+    }
+
+    GuestBootstrapResult bootstrap;
+    if (!StartGuestBootstrap(bootstrap))
+    {
+        printf("Guest thread context initialisation FAILED.\n");
+        consoleUpdate(nullptr);
+        WaitForExit();
+        consoleExit(nullptr);
+        return 1;
+    }
+
+    printf("Guest runtime heap and thread context OK.\n");
+    printf("PCR: 0x%08X  Guest stack top: 0x%08X\n",
+           bootstrap.pcr, bootstrap.guestStackTop);
     printf("Guest entry point is intentionally not called yet.\n\n");
     printf("Return to the HOME menu to exit.\n");
     consoleUpdate(nullptr);

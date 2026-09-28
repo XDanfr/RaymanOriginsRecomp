@@ -44,7 +44,8 @@ int main(int argc, char** argv)
     if (!g_memory.Init())
         return 1;
     InstallCrashHandler();
-    InitGuestHeaps();
+    if (!InitGuestHeaps())
+        return 1;
 
     LoadedImage image;
     if (!LoadXexImage(xexPath, g_memory.base, image))

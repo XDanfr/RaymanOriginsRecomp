@@ -18,7 +18,13 @@ constexpr uint32_t PCR_SIZE = 0xAB0;
 constexpr uint32_t TLS_SIZE = 0x100;
 constexpr uint32_t TEB_SIZE = 0x2E0;
 constexpr uint32_t DEFAULT_STACK_SIZE = 0x40000;
-constexpr size_t HOST_STACK_SIZE = 16 * 1024 * 1024; // o código recompilado recursa na pilha do host
+#if defined(__SWITCH__)
+// libnx has a finite shared stack VA region. The PPC stack itself lives in
+// guest memory, so this covers only the translated C++ call frames.
+constexpr size_t HOST_STACK_SIZE = 1 * 1024 * 1024;
+#else
+constexpr size_t HOST_STACK_SIZE = 16 * 1024 * 1024;
+#endif
 
 static thread_local std::shared_ptr<GuestThread> t_thread;
 static std::atomic<uint32_t> g_nextThreadId{ 1 };
@@ -58,11 +64,17 @@ static void Store32(uint32_t guest, uint32_t value)
 }
 
 // Monta PCR/TLS/TEB/pilha e o contexto de CPU da thread.
-static void SetupThreadBlock(GuestThread& thread, PPCContext& ctx, uint32_t cpuNumber)
+static bool SetupThreadBlock(GuestThread& thread, PPCContext& ctx, uint32_t cpuNumber)
 {
     uint32_t stackSize = thread.stackSize ? (thread.stackSize + 0xFFF) & ~0xFFFu : DEFAULT_STACK_SIZE;
     uint32_t total = PCR_SIZE + TLS_SIZE + TEB_SIZE + stackSize;
-    thread.block = g_memory.MapVirtual(g_runtimeHeap.AllocZeroed(total));
+    void* block = g_runtimeHeap.AllocZeroed(total);
+    if (block == nullptr)
+    {
+        fprintf(stderr, "[thread] guest thread block allocation failed (0x%X bytes)\n", total);
+        return false;
+    }
+    thread.block = g_memory.MapVirtual(block);
 
     uint32_t tls = thread.block + PCR_SIZE;
     uint32_t teb = tls + TLS_SIZE;
@@ -82,6 +94,7 @@ static void SetupThreadBlock(GuestThread& thread, PPCContext& ctx, uint32_t cpuN
     ctx.r13.u64 = thread.block;                                       // r13 = PCR
     ctx.fpscr.loadFromHost();
     SetPPCContext(ctx);
+    return true;
 }
 
 std::shared_ptr<GuestThread> InitMainThread(PPCContext& ctx)
@@ -90,7 +103,11 @@ std::shared_ptr<GuestThread> InitMainThread(PPCContext& ctx)
     thread->id = g_nextThreadId++;
     thread->handle = CreateHandle(thread);
     thread->host = pthread_self();
-    SetupThreadBlock(*thread, ctx, 0);
+    if (!SetupThreadBlock(*thread, ctx, 0))
+    {
+        CloseHandle(thread->handle);
+        return nullptr;
+    }
     t_thread = thread;
     return thread;
 }
@@ -108,7 +125,14 @@ static void* GuestThreadMain(void* arg)
     t_thread = thread;
 
     PPCContext ctx;
-    SetupThreadBlock(*thread, ctx, thread->id % 6);
+    if (!SetupThreadBlock(*thread, ctx, thread->id % 6))
+    {
+        auto lock = LockDispatcher();
+        thread->exitCode = X_STATUS_NO_MEMORY;
+        thread->exited = true;
+        NotifyDispatcher();
+        return nullptr;
+    }
 
     {
         // Criada suspensa: espera o NtResumeThread.

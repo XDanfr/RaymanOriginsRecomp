@@ -15,3 +15,8 @@ inline void SetPPCContext(PPCContext& ctx)
 {
     g_ppcContext = &ctx;
 }
+
+inline void ClearPPCContext()
+{
+    g_ppcContext = nullptr;
+}

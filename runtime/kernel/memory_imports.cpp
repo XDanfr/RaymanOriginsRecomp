@@ -31,9 +31,9 @@ static PageHeap* LookupAnyHeap(uint32_t address)
     return nullptr;
 }
 
-void InitGuestHeaps()
+bool InitGuestHeaps()
 {
-    g_runtimeHeap.Init(RUNTIME_HEAP_BASE, RUNTIME_HEAP_SIZE);
+    return g_runtimeHeap.Init(RUNTIME_HEAP_BASE, RUNTIME_HEAP_SIZE);
 }
 
 static uint32_t NtAllocateVirtualMemory(be<uint32_t>* baseAddress, be<uint32_t>* regionSize,
