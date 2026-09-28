@@ -225,7 +225,7 @@ bool GuestMemory::Init()
 
     const size_t lookupTableSize = static_cast<size_t>(PPC_CODE_SIZE) * 2;
     const size_t imageAndLookupSize =
-        static_cast<size_t>(PPC_IMAGE_SIZE) + lookupTableSize;
+        static_cast<size_t>(PPC_IMAGE_SIZE) + lookupTableSize + sizeof(PPCFunc*);
 
     if (!CommitRange(PPC_IMAGE_BASE, imageAndLookupSize))
     {
