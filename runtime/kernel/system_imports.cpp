@@ -10,6 +10,7 @@
 #include "function.h"
 #include "heap.h"
 #include "objects.h"
+#include "thread.h"
 #include "xbox_defs.h"
 
 constexpr uint32_t STATUS_DLL_NOT_FOUND = 0xC0000135;
@@ -393,7 +394,12 @@ static uint32_t FscSetCacheElementCount(uint32_t unknown, uint32_t count) { (voi
 static void KeBugCheckEx(uint32_t code, uint32_t p1, uint32_t p2, uint32_t p3, uint32_t p4)
 {
     fprintf(stderr, "[kernel] KeBugCheckEx(0x%X, 0x%X, 0x%X, 0x%X, 0x%X)\n", code, p1, p2, p3, p4);
+#if defined(__SWITCH__)
+    printf("[kernel] KeBugCheckEx: 0x%08X\n", code);
+    ExitCurrentThread(code);
+#else
     abort();
+#endif
 }
 
 static void KeBugCheck(uint32_t code)
@@ -404,7 +410,12 @@ static void KeBugCheck(uint32_t code)
 static void HalReturnToFirmware(uint32_t routine)
 {
     fprintf(stderr, "[kernel] HalReturnToFirmware(%u): o jogo pediu para sair\n", routine);
+#if defined(__SWITCH__)
+    printf("[kernel] firmware return requested: %u\n", routine);
+    ExitCurrentThread(routine);
+#else
     exit(0);
+#endif
 }
 
 static void DbgBreakPoint()
@@ -416,7 +427,12 @@ static void RtlRaiseException(uint32_t record)
 {
     uint32_t code = record ? static_cast<be<uint32_t>*>(g_memory.Translate(record))->get() : 0;
     fprintf(stderr, "[kernel] RtlRaiseException(código 0x%08X): exceções do guest não são suportadas\n", code);
+#if defined(__SWITCH__)
+    printf("[kernel] guest exception: 0x%08X\n", code);
+    ExitCurrentThread(code);
+#else
     abort();
+#endif
 }
 
 static uint32_t __C_specific_handler() { return 1; } // ExceptionContinueSearch

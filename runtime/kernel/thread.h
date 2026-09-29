@@ -7,6 +7,11 @@
 
 struct PPCContext;
 
+struct GuestThreadExit
+{
+    uint32_t exitCode;
+};
+
 // Thread do guest: um pthread do host com o seu próprio bloco PCR/TLS/TEB/pilha
 // na memória do guest e o seu próprio PPCContext.
 struct GuestThread final : KernelObject

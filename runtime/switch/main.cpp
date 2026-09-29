@@ -14,10 +14,34 @@
 
 namespace
 {
-void WaitForExit()
+void WaitForExit(bool reportGuestState = false)
 {
+    bool finalStateReported = false;
     while (appletMainLoop())
     {
+        if (reportGuestState && !finalStateReported)
+        {
+            switch (GetGuestExecutionState())
+            {
+            case GuestExecutionState::Returned:
+                printf("\nGuest entry point returned: r3=0x%08X\n",
+                       GetGuestExecutionResult());
+                finalStateReported = true;
+                break;
+            case GuestExecutionState::RequestedExit:
+                printf("\nGuest requested exit: code=0x%08X\n",
+                       GetGuestExecutionResult());
+                finalStateReported = true;
+                break;
+            case GuestExecutionState::StoppedByException:
+                printf("\nGuest execution stopped by a runtime exception.\n");
+                printf("See the last diagnostic line above.\n");
+                finalStateReported = true;
+                break;
+            default:
+                break;
+            }
+        }
         consoleUpdate(nullptr);
         svcSleepThread(50'000'000);
     }
@@ -119,7 +143,7 @@ int main(int argc, char** argv)
     }
 
     GuestBootstrapResult bootstrap;
-    if (!StartGuestBootstrap(bootstrap))
+    if (!PrepareGuestEntry(image.entryPoint, bootstrap))
     {
         printf("Guest thread context initialisation FAILED.\n");
         consoleUpdate(nullptr);
@@ -131,11 +155,14 @@ int main(int argc, char** argv)
     printf("Guest runtime heap and thread context OK.\n");
     printf("PCR: 0x%08X  Guest stack top: 0x%08X\n",
            bootstrap.pcr, bootstrap.guestStackTop);
-    printf("Guest entry point is intentionally not called yet.\n\n");
+    printf("Calling generated entry point 0x%08X...\n", image.entryPoint);
+    printf("The console will remain active for diagnostics.\n\n");
     printf("Return to the HOME menu to exit.\n");
     consoleUpdate(nullptr);
+    svcSleepThread(100'000'000);
 
-    WaitForExit();
+    RunGuestEntry();
+    WaitForExit(true);
     consoleExit(nullptr);
     return 0;
 }

@@ -37,7 +37,8 @@ Legend:
 - [x] sparse 4 GB guest-memory reservation
 - [x] dynamic guest page mapping/commit and guest-addressed read/write probe
 - [ ] page protection handling
-- [ ] thread creation
+- [x] main guest-thread creation and PPC context bootstrap
+- [~] game-created thread lifecycle and stress behaviour
 - [ ] thread priority / affinity policy
 - [ ] synchronization primitives
 - [ ] high-resolution timing
@@ -49,9 +50,9 @@ Legend:
 - [ ] crash/exception handling
 - [ ] unresolved import behaviour audited
 
-The current Switch executable is a bring-up probe rather than a game launcher. Hardware validation confirmed that it starts through libnx, reserves a sparse 4 GB guest window, commits the generated image/lookup region plus a small dynamic test page, and performs a guest-addressed read/write before waiting for the user to return to HOME.
+The current Switch executable is a bring-up launcher. Hardware validation confirmed that it starts through libnx, reserves a sparse 4 GB guest window, commits the generated image/lookup region plus a small dynamic test page, performs a guest-addressed read/write, initializes the sparse runtime heap, and creates a host pthread with a valid PPC PCR/TLS/TEB and guest stack.
 
-The probe was validated on HOS 22.5.0 with Atmosphère 1.11.2 in full-application mode. When using Sphaira through a forwarder, recreate the forwarder after updating Sphaira so its embedded NRO loader includes the current launch fixes.
+The launcher was validated on HOS 22.5.0 with Atmosphère 1.11.2 in full-application mode. When using Sphaira through a forwarder, recreate the forwarder after updating Sphaira so its embedded NRO loader includes the current launch fixes.
 
 ## Input
 
@@ -92,7 +93,8 @@ The probe was validated on HOS 22.5.0 with Atmosphère 1.11.2 in full-applicatio
 - [~] runtime initializes (memory and XEX bootstrap only)
 - [~] game executable is found and loaded
 - [x] generated recompiled entry-point mapping verified
-- [ ] guest thread starts and calls the recompiled entry point
+- [x] guest thread and PPC context initialize on hardware
+- [~] guest thread calls the recompiled entry point
 - [ ] menu/home screen appears
 - [ ] first level loads
 - [ ] player can move

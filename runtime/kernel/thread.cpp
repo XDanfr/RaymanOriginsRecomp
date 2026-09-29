@@ -43,11 +43,6 @@ static std::shared_ptr<GuestThread> ThreadFromPointerOrHandle(uint32_t value)
     return it != g_threadsByTeb.end() ? it->second.lock() : nullptr;
 }
 
-struct ThreadExit
-{
-    uint32_t exitCode;
-};
-
 std::shared_ptr<GuestThread> GetCurrentGuestThread()
 {
     return t_thread;
@@ -114,7 +109,7 @@ std::shared_ptr<GuestThread> InitMainThread(PPCContext& ctx)
 
 [[noreturn]] void ExitCurrentThread(uint32_t exitCode)
 {
-    throw ThreadExit{ exitCode };
+    throw GuestThreadExit{ exitCode };
 }
 
 static void* GuestThreadMain(void* arg)
@@ -162,7 +157,7 @@ static void* GuestThreadMain(void* arg)
         }
         exitCode = ctx.r3.u32;
     }
-    catch (const ThreadExit& exit)
+    catch (const GuestThreadExit& exit)
     {
         exitCode = exit.exitCode;
     }

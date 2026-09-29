@@ -11,6 +11,7 @@
 #include <atomic>
 #include "function.h"
 #include "objects.h"
+#include "thread.h"
 #include "xbox_defs.h"
 
 namespace fs = std::filesystem;
@@ -65,13 +66,23 @@ static uint32_t XamGetExecutionId(be<uint32_t>* info)
 static void XamLoaderTerminateTitle()
 {
     fprintf(stderr, "[xam] XamLoaderTerminateTitle: o jogo pediu para sair\n");
+#if defined(__SWITCH__)
+    printf("[xam] title requested termination\n");
+    ExitCurrentThread(0);
+#else
     exit(0);
+#endif
 }
 
 static void XamLoaderLaunchTitle(const char* name, uint32_t flags)
 {
     fprintf(stderr, "[xam] XamLoaderLaunchTitle(\"%s\", 0x%X): saindo\n", name ? name : "", flags);
+#if defined(__SWITCH__)
+    printf("[xam] title launch requested: %s\n", name ? name : "");
+    ExitCurrentThread(0);
+#else
     exit(0);
+#endif
 }
 
 // ---- Usuário e perfil (um usuário local no índice 0) ----

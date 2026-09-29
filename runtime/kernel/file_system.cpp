@@ -118,6 +118,14 @@ static std::mutex g_fsMutex;
 static std::unordered_map<std::string, Device> g_devices;          // "game:" -> pasta
 static std::unordered_map<std::string, std::string> g_symlinks;    // "cache:" -> "\device\harddisk0\cache0"
 
+#if defined(__SWITCH__)
+constexpr const char* DEFAULT_GAME_DIR = "sdmc:/switch/RaymanOriginsRecomp/game";
+constexpr const char* DEFAULT_DATA_DIR = "sdmc:/switch/RaymanOriginsRecomp/data";
+#else
+constexpr const char* DEFAULT_GAME_DIR = "private/game";
+constexpr const char* DEFAULT_DATA_DIR = "private/data";
+#endif
+
 static std::string Lower(std::string s)
 {
     std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return char(tolower(c)); });
@@ -130,8 +138,8 @@ static void InitDevices()
     std::call_once(once, [] {
         const char* game = getenv("RAYMAN_GAME_DIR");
         const char* data = getenv("RAYMAN_DATA_DIR");
-        fs::path gameDir = game ? game : "private/game";
-        fs::path dataDir = data ? data : "private/data";
+        fs::path gameDir = game ? game : DEFAULT_GAME_DIR;
+        fs::path dataDir = data ? data : DEFAULT_DATA_DIR;
         fs::create_directories(dataDir / "cache");
 
         for (const char* name : { "game:", "d:", "\\device\\cdrom0" })
@@ -146,7 +154,7 @@ static void InitDevices()
 fs::path DataDirectory()
 {
     const char* data = getenv("RAYMAN_DATA_DIR");
-    return data ? data : "private/data";
+    return data ? data : DEFAULT_DATA_DIR;
 }
 
 void MountDevice(const std::string& name, const fs::path& root, bool writable)

@@ -10,4 +10,19 @@ struct GuestBootstrapResult
     uint32_t guestStackTop = 0;
 };
 
-bool StartGuestBootstrap(GuestBootstrapResult& result);
+enum class GuestExecutionState : uint32_t
+{
+    NotStarted,
+    Preparing,
+    Prepared,
+    Running,
+    Returned,
+    RequestedExit,
+    StoppedByException,
+    FailedToPrepare,
+};
+
+bool PrepareGuestEntry(uint32_t entryPoint, GuestBootstrapResult& result);
+void RunGuestEntry();
+GuestExecutionState GetGuestExecutionState();
+uint32_t GetGuestExecutionResult();

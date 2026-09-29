@@ -100,6 +100,9 @@ PPC_FUNC(__imp__DbgPrint)
         while (!text.empty() && (text.back() == '\n' || text.back() == '\r' || text.back() == ' '))
             text.pop_back();
         fprintf(stderr, "[DbgPrint] %s\n", text.c_str());
+#if defined(__SWITCH__)
+        printf("[DbgPrint] %s\n", text.c_str());
+#endif
     }
     ctx.r3.u64 = 0;
 }

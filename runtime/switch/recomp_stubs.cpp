@@ -2,6 +2,13 @@
 #include <cstdlib>
 #include "cpu/guest_context.h"
 
+namespace
+{
+struct MissingIndirectCall
+{
+};
+}
+
 [[noreturn]] void PpcMissingIndirectCall(uint32_t target, PPCContext& ctx)
 {
     std::fprintf(stderr,
@@ -10,5 +17,7 @@
         static_cast<uint32_t>(ctx.lr),
         ctx.r1.u32);
 
-    std::abort();
+    std::printf("[recomp] missing call 0x%08X from lr=0x%08X\n",
+        target, static_cast<uint32_t>(ctx.lr));
+    throw MissingIndirectCall{};
 }
