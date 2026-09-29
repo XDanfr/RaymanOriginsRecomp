@@ -161,6 +161,20 @@ static void* GuestThreadMain(void* arg)
     {
         exitCode = exit.exitCode;
     }
+    catch (...)
+    {
+        // A translated guest exception must not escape a detached host
+        // pthread: that would call std::terminate and close the NRO without
+        // producing a libnx exception dump. Keep the process alive long enough
+        // for the Switch diagnostics loop to report the failed thread.
+        fprintf(stderr, "[thread] thread %u terminou por exceção não tratada\n", thread->id);
+#if defined(__SWITCH__)
+        printf("[thread] thread %u stopped by an unhandled runtime exception\n", thread->id);
+#endif
+        exitCode = X_STATUS_UNSUCCESSFUL;
+    }
+
+    ClearPPCContext();
 
     {
         auto lock = LockDispatcher();
@@ -206,7 +220,12 @@ static uint32_t ExCreateThread(be<uint32_t>* handle, uint32_t stackSize, be<uint
         CloseHandle(thread->handle);
         return X_STATUS_NO_MEMORY;
     }
+#if defined(__SWITCH__)
+    // devkitA64's pthread_detach is an ENOSYS stub. The guest thread remains
+    // joinable for now; its lifecycle is tracked by the guest dispatcher.
+#else
     pthread_detach(thread->host);
+#endif
 
     if (handle)
         handle->set(thread->handle);

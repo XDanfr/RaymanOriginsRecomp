@@ -49,9 +49,11 @@ if (RAYMAN_RECOMP_SWITCH)
         runtime/kernel/net_imports.cpp
         runtime/kernel/video_imports.cpp
         runtime/gpu/command_processor.cpp
+        runtime/gpu/native_hooks.cpp
         runtime/apu/audio.cpp
         runtime/switch/platform.cpp
         runtime/switch/guest_bootstrap.cpp
+        runtime/switch/presenter.cpp
         runtime/switch/recomp_stubs.cpp
         tools/XenonRecomp/XenonUtils/image.cpp
         tools/XenonRecomp/XenonUtils/xex.cpp
@@ -68,6 +70,7 @@ if (RAYMAN_RECOMP_SWITCH)
         ${CMAKE_CURRENT_SOURCE_DIR}/tools/XenonRecomp/thirdparty/libmspack/libmspack/mspack
         ${CMAKE_CURRENT_SOURCE_DIR}/tools/XenonRecomp/thirdparty/tiny-AES-c
         ${CMAKE_CURRENT_SOURCE_DIR}/tools/XenonRecomp/thirdparty/TinySHA1
+        ${CMAKE_CURRENT_SOURCE_DIR}/tools/XenonRecomp/thirdparty/xxHash
     )
 
     target_compile_options(RaymanSwitchRuntimeCore PRIVATE

@@ -8,10 +8,12 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cerrno>
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
 #include <mutex>
+#include <pthread.h>
 #include <thread>
 #include "apu/audio.h"
 #include "cpu/guest_context.h"
@@ -26,6 +28,8 @@ namespace
 constexpr uint32_t DRIVER_TAG = 0x41550000;
 constexpr size_t MAX_CLIENTS = 8;
 constexpr auto PUMP_INTERVAL = std::chrono::microseconds(5333);
+constexpr uint32_t XMA_MMIO_BASE = 0x7FEA0000;
+constexpr size_t XMA_MMIO_SIZE = 0x10000;
 
 struct Client
 {
@@ -43,7 +47,11 @@ AudioSink g_sink = nullptr;
 void Worker()
 {
     PPCContext ctx;
-    InitMainThread(ctx);
+    if (InitMainThread(ctx) == nullptr)
+    {
+        fprintf(stderr, "[apu] não consegui inicializar o contexto da thread de áudio\n");
+        return;
+    }
 
     while (true)
     {
@@ -68,11 +76,72 @@ void Worker()
         if (callback)
         {
             ctx.r3.u64 = arg;
-            g_memory.FindFunction(callback)(ctx, g_memory.base);
+            PPCFunc* function = g_memory.FindFunction(callback);
+            if (function == nullptr)
+            {
+                fprintf(stderr, "[apu] callback 0x%08X sem função recompilada\n", callback);
+                continue;
+            }
+            function(ctx, g_memory.base);
         }
     }
 }
+
+#if defined(__SWITCH__)
+void* AudioWorkerEntry(void*)
+{
+    try
+    {
+        Worker();
+    }
+    catch (...)
+    {
+        fprintf(stderr, "[apu] worker terminou por exceção não tratada\n");
+        ClearPPCContext();
+    }
+    return nullptr;
+}
+
+bool StartAudioWorker()
+{
+    pthread_t thread;
+    const int createResult = pthread_create(&thread, nullptr, AudioWorkerEntry, nullptr);
+    if (createResult != 0)
+    {
+        fprintf(stderr, "[apu] pthread_create(audio) falhou (%d)\n", createResult);
+        return false;
+    }
+
+    const int detachResult = pthread_detach(thread);
+    // Current devkitA64/libnx exposes pthread_create but has no Horizon
+    // thread-detach syscall, so ENOSYS means the worker remains joinable for
+    // the lifetime of the process. These workers are intentionally never
+    // joined during normal title execution.
+    if (detachResult != 0 && detachResult != ENOSYS)
+    {
+        fprintf(stderr, "[apu] pthread_detach(audio) falhou (%d)\n", detachResult);
+        return false;
+    }
+    if (detachResult == ENOSYS)
+        fprintf(stderr, "[apu] pthread_detach(audio) indisponível; worker mantido\n");
+    return true;
+}
+#endif
 } // namespace
+
+bool InitAudioHardware()
+{
+    if (!g_memory.CommitRange(XMA_MMIO_BASE, XMA_MMIO_SIZE))
+    {
+        fprintf(stderr, "[apu] não consegui mapear a janela XMA MMIO 0x%08X..0x%08X\n",
+                XMA_MMIO_BASE, XMA_MMIO_BASE + uint32_t(XMA_MMIO_SIZE));
+        return false;
+    }
+
+    fprintf(stderr, "[apu] janela XMA MMIO mapeada em 0x%08X..0x%08X\n",
+            XMA_MMIO_BASE, XMA_MMIO_BASE + uint32_t(XMA_MMIO_SIZE));
+    return true;
+}
 
 void SetAudioSink(AudioSink sink)
 {
@@ -96,7 +165,14 @@ static uint32_t XAudioRegisterRenderDriverClient(be<uint32_t>* callbackInfo, be<
         driver->set(DRIVER_TAG | uint32_t(i));
         fprintf(stderr, "[apu] cliente %zu: callback 0x%08X arg 0x%08X\n", i, client.callback, callbackInfo[1].get());
         if (!g_workerStarted.exchange(true))
+#if defined(__SWITCH__)
+        {
+            if (!StartAudioWorker())
+                g_workerStarted = false;
+        }
+#else
             std::thread(Worker).detach();
+#endif
         return 0;
     }
     return 0x8007000E; // E_OUTOFMEMORY

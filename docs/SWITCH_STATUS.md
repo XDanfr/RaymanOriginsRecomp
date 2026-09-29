@@ -38,16 +38,17 @@ Legend:
 - [x] dynamic guest page mapping/commit and guest-addressed read/write probe
 - [ ] page protection handling
 - [x] main guest-thread creation and PPC context bootstrap
-- [~] game-created thread lifecycle and stress behaviour
+- [~] game-created thread lifecycle and stress behaviour (devkitA64 `pthread_detach` is unavailable; handles are retained)
 - [ ] thread priority / affinity policy
 - [ ] synchronization primitives
 - [ ] high-resolution timing
 - [~] filesystem paths (game and writable data roots selected; hardware validation pending)
-- [~] file reads (desktop boot path validated with a complete extracted disc; Switch validation pending)
+- [x] file reads (complete extracted-disc startup validated on Switch hardware)
 - [ ] file mapping if required
 - [x] default XEX image decode/load and generated entry-point mapping
 - [~] XEX/XAM assumptions audited
-- [~] crash/exception handling (libnx exception dump written to `sdmc:/switch/RaymanOriginsRecomp/crash.log`)
+- [~] XEX kernel-variable import relocation (all imported variables receive guest storage; semantic values remain to be audited)
+- [~] crash/exception handling (libnx exception dump written to `sdmc:/switch/RaymanOriginsRecomp/crash.log`; subsystem diagnostics written to `runtime.log`)
 - [ ] unresolved import behaviour audited
 
 The current Switch executable is a bring-up launcher. Hardware validation confirmed that it starts through libnx, reserves a sparse 4 GB guest window, commits the generated image/lookup region plus a small dynamic test page, performs a guest-addressed read/write, initializes the sparse runtime heap, and creates a host pthread with a valid PPC PCR/TLS/TEB and guest stack. Before entering the guest it now verifies that several essential files exist beside `default.xex`; deploy the complete contents of the user's own extracted disc under `sdmc:/switch/RaymanOriginsRecomp/game/`, not only the XEX.
@@ -78,10 +79,12 @@ The launcher was validated on HOS 22.5.0 with Atmosphère 1.11.2 in full-applica
 - [ ] existing native renderer compiles for Switch
 - [ ] Vulkan loader path works
 - [ ] NVK is detected
-- [ ] Switch VI surface created
+- [x] Switch VI presentation path (animated libnx software-framebuffer probe validated on hardware)
 - [ ] swapchain created
-- [ ] shaders load
-- [ ] first frame presented
+- [x] native renderer hook boundary (shader/draw/clear/resolve/present audit validated on hardware)
+- [ ] Vulkan shaders load
+- [x] first diagnostic frame presented
+- [ ] first Rayman renderer frame presented
 - [ ] menus render
 - [ ] gameplay renders
 - [ ] render-to-texture paths audited
@@ -94,13 +97,18 @@ The launcher was validated on HOS 22.5.0 with Atmosphère 1.11.2 in full-applica
 - [~] game executable is found and loaded
 - [x] generated recompiled entry-point mapping verified
 - [x] guest thread and PPC context initialize on hardware
-- [~] guest thread calls the recompiled entry point
+- [x] guest thread calls the recompiled entry point and remains active through thousands of frame-loop iterations
 - [ ] menu/home screen appears
 - [ ] first level loads
 - [ ] player can move
 - [ ] player can die/restart
 - [ ] audio plays
 - [ ] rendering remains stable for 10+ minutes
+
+The validated diagnostic run reached frame 2,700 and captured 252,915 high-level
+draw calls using 34 known shaders, with no unknown-shader draws or crash. The
+software framebuffer remained responsive throughout. The zeroed sampled guest
+front buffer is expected while the command processor remains a null backend.
 
 ## Performance
 

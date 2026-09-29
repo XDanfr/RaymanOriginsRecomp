@@ -7,15 +7,59 @@
 #undef PadState
 
 #include <array>
+#include <cstdlib>
 #include <cstdio>
+#include <exception>
 #include <string>
+#include "apu/audio.h"
+#include "cpu/guest_context.h"
+#include "gpu/native_hooks.h"
 #include "loader.h"
 #include "memory.h"
 #include "kernel/memory_layout.h"
 #include "switch/guest_bootstrap.h"
+#include "switch/presenter.h"
 
 namespace
 {
+constexpr const char* RUNTIME_LOG_PATH =
+    "sdmc:/switch/RaymanOriginsRecomp/runtime.log";
+constexpr const char* CRASH_LOG_PATH =
+    "sdmc:/switch/RaymanOriginsRecomp/crash.log";
+
+bool InitRuntimeLog()
+{
+    // A successful run must not leave a previous failure looking current.
+    std::remove(CRASH_LOG_PATH);
+    FILE* redirected = freopen(RUNTIME_LOG_PATH, "w", stderr);
+    if (redirected == nullptr)
+        return false;
+
+    setvbuf(stderr, nullptr, _IOLBF, BUFSIZ);
+    fprintf(stderr, "Rayman Origins Recompiled Switch runtime log\n");
+    return true;
+}
+
+[[noreturn]] void HandleUnexpectedTerminate()
+{
+    FILE* file = fopen(CRASH_LOG_PATH, "w");
+    if (file != nullptr)
+    {
+        fprintf(file, "Rayman Origins Recompiled Switch termination\n");
+        fprintf(file, "reason=uncaught C++ exception or std::terminate\n");
+        if (PPCContext* context = GetPPCContext())
+        {
+            fprintf(file, "guest_lr=0x%08X guest_r1=0x%08X guest_r13=0x%08X\n",
+                    static_cast<uint32_t>(context->lr), context->r1.u32, context->r13.u32);
+            fprintf(file, "guest_r3=0x%08X guest_r4=0x%08X guest_r5=0x%08X\n",
+                    context->r3.u32, context->r4.u32, context->r5.u32);
+        }
+        fclose(file);
+    }
+    fflush(stderr);
+    std::_Exit(1);
+}
+
 bool ValidateGameData(const char* xexPath)
 {
     const std::string path = xexPath;
@@ -58,6 +102,8 @@ bool ValidateGameData(const char* xexPath)
 void WaitForExit(bool reportGuestState = false)
 {
     bool finalStateReported = false;
+    bool runningHeartbeatReported = false;
+    uint32_t loopCount = 0;
     while (appletMainLoop())
     {
         if (reportGuestState && !finalStateReported)
@@ -82,8 +128,19 @@ void WaitForExit(bool reportGuestState = false)
             default:
                 break;
             }
+
+            if (!runningHeartbeatReported && ++loopCount >= 200 &&
+                GetGuestExecutionState() == GuestExecutionState::Running)
+            {
+                printf("\nGuest is still running after 10 seconds.\n");
+                printf("Runtime diagnostics: %s\n", RUNTIME_LOG_PATH);
+                fprintf(stderr, "[switch] guest still running after 10 seconds\n");
+                runningHeartbeatReported = true;
+            }
         }
-        consoleUpdate(nullptr);
+        PumpSwitchPresentation();
+        if (!SwitchPresentationOwnsDisplay())
+            consoleUpdate(nullptr);
         svcSleepThread(50'000'000);
     }
 }
@@ -91,12 +148,16 @@ void WaitForExit(bool reportGuestState = false)
 
 int main(int argc, char** argv)
 {
+    std::set_terminate(HandleUnexpectedTerminate);
     consoleInit(nullptr);
+    const bool runtimeLogReady = InitRuntimeLog();
     InitPlatform();
 
     printf("Rayman Origins Recompiled\n");
     printf("Switch bootstrap OK\n");
     printf("libnx + devkitA64 executable started successfully.\n\n");
+    if (!runtimeLogReady)
+        printf("Warning: could not create %s\n\n", RUNTIME_LOG_PATH);
 
     printf("Initialising 4 GB guest address window...\n");
     consoleUpdate(nullptr);
@@ -148,6 +209,36 @@ int main(int argc, char** argv)
     printf("Loading XEX image: %s\n", xexPath);
     consoleUpdate(nullptr);
 
+    if (!ValidateGameData(xexPath))
+    {
+        consoleUpdate(nullptr);
+        WaitForExit();
+        consoleExit(nullptr);
+        return 1;
+    }
+
+    printf("Essential game data found.\n");
+    printf("Initialising sparse guest runtime heap...\n");
+    consoleUpdate(nullptr);
+
+    if (!InitGuestHeaps())
+    {
+        printf("Guest runtime heap initialisation FAILED.\n");
+        consoleUpdate(nullptr);
+        WaitForExit();
+        consoleExit(nullptr);
+        return 1;
+    }
+
+    if (!InitAudioHardware())
+    {
+        printf("XMA audio MMIO initialisation FAILED.\n");
+        consoleUpdate(nullptr);
+        WaitForExit();
+        consoleExit(nullptr);
+        return 1;
+    }
+
     LoadedImage image;
     if (!LoadXexImage(xexPath, g_memory.base, image))
     {
@@ -172,27 +263,6 @@ int main(int argc, char** argv)
            image.base, image.base + image.size);
     printf("Generated entry mapping found: 0x%08X\n", image.entryPoint);
 
-    if (!ValidateGameData(xexPath))
-    {
-        consoleUpdate(nullptr);
-        WaitForExit();
-        consoleExit(nullptr);
-        return 1;
-    }
-
-    printf("Essential game data found.\n");
-    printf("Initialising sparse guest runtime heap...\n");
-    consoleUpdate(nullptr);
-
-    if (!InitGuestHeaps())
-    {
-        printf("Guest runtime heap initialisation FAILED.\n");
-        consoleUpdate(nullptr);
-        WaitForExit();
-        consoleExit(nullptr);
-        return 1;
-    }
-
     GuestBootstrapResult bootstrap;
     if (!PrepareGuestEntry(image.entryPoint, bootstrap))
     {
@@ -207,13 +277,18 @@ int main(int argc, char** argv)
     printf("PCR: 0x%08X  Guest stack top: 0x%08X\n",
            bootstrap.pcr, bootstrap.guestStackTop);
     printf("Calling generated entry point 0x%08X...\n", image.entryPoint);
-    printf("The console will remain active for diagnostics.\n\n");
+    printf("The console will remain active until the first guest frame.\n");
+    printf("Then the presentation probe should show animated colour bars.\n\n");
     printf("Return to the HOME menu to exit.\n");
     consoleUpdate(nullptr);
     svcSleepThread(100'000'000);
 
+    InitNativeGraphicsHooks();
     RunGuestEntry();
     WaitForExit(true);
-    consoleExit(nullptr);
+    const bool presentationOwnedDisplay = SwitchPresentationOwnsDisplay();
+    ShutdownSwitchPresentation();
+    if (!presentationOwnedDisplay)
+        consoleExit(nullptr);
     return 0;
 }

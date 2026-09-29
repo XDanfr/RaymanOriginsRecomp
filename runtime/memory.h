@@ -21,6 +21,10 @@ struct GuestMemory
     // No Switch isto cria os aliases Horizon necessários para o range.
     bool CommitRange(uint32_t guest, size_t size);
 
+    // Consulta sem criar backing. Usada por diagnósticos que precisam evitar
+    // tocar uma página ainda não mapeada no backend esparso do Switch.
+    bool IsRangeCommitted(uint32_t guest, size_t size) const;
+
     void* Translate(uint32_t guest) const { return base + guest; }
     uint32_t MapVirtual(const void* host) const
     {

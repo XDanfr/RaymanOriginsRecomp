@@ -8,10 +8,12 @@
 // command_processor.cc, graphics_system.cc, xboxkrnl_video.cc).
 #include <atomic>
 #include <chrono>
+#include <cerrno>
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
 #include <mutex>
+#include <pthread.h>
 #include <thread>
 #include <vector>
 #include <set>
@@ -22,6 +24,9 @@
 #include "kernel/thread.h"
 #include "kernel/video.h"
 #include "memory.h"
+#if defined(__SWITCH__)
+#include "switch/presenter.h"
+#endif
 
 namespace
 {
@@ -124,7 +129,13 @@ void DispatchInterrupt(uint32_t source, uint32_t cpu)
     // O tratador lê a CPU atual em PCR+0x10C e confirma a interrupção limpando o bit
     // dela numa máscara que a GPU espera zerar: roda "como" a CPU pedida (Xenia).
     *static_cast<uint8_t*>(g_memory.Translate(ctx.r13.u32 + 0x10C)) = uint8_t(cpu);
-    g_memory.FindFunction(callback)(ctx, g_memory.base);
+    PPCFunc* function = g_memory.FindFunction(callback);
+    if (function == nullptr)
+    {
+        fprintf(stderr, "[gpu] interrupção callback 0x%08X sem função recompilada\n", callback);
+        return;
+    }
+    function(ctx, g_memory.base);
 }
 
 
@@ -265,7 +276,11 @@ void ExecutePacket(Reader& reader)
         reader.Skip(count - 4);
         g_gpu.counter++;
         RecordFrame(g_gpu.frames + 1);
-        if (++g_gpu.frames <= 3 || (g_gpu.frames % 300) == 0)
+        ++g_gpu.frames;
+#if defined(__SWITCH__)
+        SubmitSwitchPresentationFrame(g_gpu.frames, frontBuffer, width, height);
+#endif
+        if (g_gpu.frames <= 3 || (g_gpu.frames % 300) == 0)
             fprintf(stderr, "[gpu] frame %llu: front buffer 0x%08X %ux%u\n",
                     (unsigned long long)g_gpu.frames, frontBuffer, width, height);
         return;
@@ -423,7 +438,12 @@ void ExecuteBuffer(Reader& reader, uint32_t endIndex)
 void GpuThread()
 {
     PPCContext ctx;
-    InitMainThread(ctx); // bloco de thread do guest para rodar o callback de interrupção
+    if (InitMainThread(ctx) == nullptr)
+    {
+        fprintf(stderr, "[gpu] não consegui inicializar o contexto da thread GPU\n");
+        return;
+    }
+    // bloco de thread do guest para rodar o callback de interrupção
     t_interruptCtx = &ctx;
 
     while (g_gpu.running)
@@ -448,7 +468,11 @@ void GpuThread()
 void VsyncThread()
 {
     PPCContext ctx;
-    InitMainThread(ctx);
+    if (InitMainThread(ctx) == nullptr)
+    {
+        fprintf(stderr, "[gpu] não consegui inicializar o contexto da thread vsync\n");
+        return;
+    }
     t_interruptCtx = &ctx;
 
     auto next = std::chrono::steady_clock::now();
@@ -461,10 +485,77 @@ void VsyncThread()
     }
 }
 
+#if defined(__SWITCH__)
+void* GpuThreadEntry(void*)
+{
+    try
+    {
+        GpuThread();
+    }
+    catch (...)
+    {
+        fprintf(stderr, "[gpu] worker terminou por exceção não tratada\n");
+        g_gpu.running = false;
+        ClearPPCContext();
+    }
+    return nullptr;
+}
+
+void* VsyncThreadEntry(void*)
+{
+    try
+    {
+        VsyncThread();
+    }
+    catch (...)
+    {
+        fprintf(stderr, "[gpu] vsync terminou por exceção não tratada\n");
+        g_gpu.running = false;
+        ClearPPCContext();
+    }
+    return nullptr;
+}
+
+bool StartSwitchWorker(void* (*entry)(void*), const char* name)
+{
+    pthread_t thread;
+    const int createResult = pthread_create(&thread, nullptr, entry, nullptr);
+    if (createResult != 0)
+    {
+        fprintf(stderr, "[gpu] pthread_create(%s) falhou (%d)\n", name, createResult);
+        return false;
+    }
+
+    const int detachResult = pthread_detach(thread);
+    // Current devkitA64/libnx has no Horizon thread-detach syscall. ENOSYS is
+    // therefore expected; the process-lifetime GPU workers remain joinable.
+    if (detachResult != 0 && detachResult != ENOSYS)
+    {
+        fprintf(stderr, "[gpu] pthread_detach(%s) falhou (%d)\n", name, detachResult);
+        g_gpu.running = false;
+        return false;
+    }
+    if (detachResult == ENOSYS)
+        fprintf(stderr, "[gpu] pthread_detach(%s) indisponível; worker mantido\n", name);
+    return true;
+}
+#endif
+
 void StartGpu()
 {
     if (g_gpu.running.exchange(true))
         return;
+
+    // The desktop backend's flat mmap made the Xenos register window appear
+    // implicitly available. Switch guest memory is sparse, so back the whole
+    // register range before the first startup writes below.
+    if (!g_memory.CommitRange(MMIO_BASE, REGISTER_COUNT * sizeof(uint32_t)))
+    {
+        g_gpu.running = false;
+        fprintf(stderr, "[gpu] não consegui mapear a janela MMIO 0x%08X..0x%08X\n",
+                MMIO_BASE, MMIO_BASE + REGISTER_COUNT * sizeof(uint32_t));
+        return;
+    }
 
     // Registradores lidos por MMIO que o jogo espera ver preenchidos (Xenia).
     Store32(MMIO_BASE + 0x0F00 * 4, 0x08100748); // RB_EDRAM_TIMING
@@ -472,8 +563,17 @@ void StartGpu()
     Store32(MMIO_BASE + 0x1951 * 4, 0x00000001); // status de interrupção: vblank
     Store32(MMIO_BASE + 0x1961 * 4, 0x050002D0); // AVIVO_D1MODE_VIEWPORT_SIZE: 1280x720
 
+#if defined(__SWITCH__)
+    if (!StartSwitchWorker(GpuThreadEntry, "gpu") ||
+        !StartSwitchWorker(VsyncThreadEntry, "vsync"))
+    {
+        g_gpu.running = false;
+        return;
+    }
+#else
     std::thread(GpuThread).detach();
     std::thread(VsyncThread).detach();
+#endif
     fprintf(stderr, "[gpu] processador de comandos iniciado (ring 0x%08X, %u dwords)\n", g_gpu.ringBase, g_gpu.ringDwords);
 }
 } // namespace

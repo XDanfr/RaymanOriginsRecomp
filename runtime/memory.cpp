@@ -335,3 +335,28 @@ bool GuestMemory::CommitRange(uint32_t guest, size_t size)
     return true;
 #endif
 }
+
+bool GuestMemory::IsRangeCommitted(uint32_t guest, size_t size) const
+{
+    if (size == 0)
+        return base != nullptr;
+
+    const size_t offset = guest;
+    if (base == nullptr || offset >= PPC_MEMORY_SIZE ||
+        size > PPC_MEMORY_SIZE - offset)
+        return false;
+
+#if defined(__SWITCH__)
+    const size_t begin = AlignDown(offset, SWITCH_PAGE_SIZE);
+    const size_t end = AlignUp(offset + size, SWITCH_PAGE_SIZE);
+
+    std::lock_guard lock(commitMutex);
+    for (size_t pageOffset = begin; pageOffset < end; pageOffset += SWITCH_PAGE_SIZE)
+    {
+        if (committedPages[pageOffset / SWITCH_PAGE_SIZE] == 0)
+            return false;
+    }
+#endif
+
+    return true;
+}

@@ -112,7 +112,8 @@ bool PrepareGuestEntry(uint32_t entryPoint, GuestBootstrapResult& result)
         return false;
     }
 
-    pthread_detach(thread);
+    // devkitA64's pthread_detach is an ENOSYS stub. The bootstrap thread lives
+    // for the duration of the title, so retaining it is harmless here.
 
     std::unique_lock lock(g_startMutex);
     g_startCondition.wait(lock, [] {

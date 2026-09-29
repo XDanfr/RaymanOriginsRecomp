@@ -10,6 +10,17 @@ That means the first Switch graphics milestone should be:
 
 See [NATIVE_RENDERER.md](NATIVE_RENDERER.md).
 
+The Switch target now has a deliberately small presentation probe ahead of
+the Vulkan port.  It releases the libnx text console after the first guest
+`XE_SWAP`, creates a 1280x720 double-buffered libnx framebuffer, and displays
+animated diagnostic colour bars.  It also hooks Rayman's high-level D3D
+shader, draw, clear, resolve, and present entry points and records their
+activity in `runtime.log`. Once the console is released, stdout is redirected
+to that log so later diagnostics cannot call into libnx's retired software
+console renderer. This validates VI ownership and the native-renderer
+hook boundary on hardware; it does **not** render the game or replace the
+Vulkan renderer.
+
 ## Proposed stack
 
     Rayman renderer
@@ -73,6 +84,12 @@ Do not add a second shader language unless the existing generated Vulkan shaders
 
 The relevant Switch ports use Mesa's NVK Vulkan driver.
 
+Unlike libnx, a Switch NVK build is not currently supplied by this repository
+or by the installed devkitPro toolchain.  The real renderer target will need a
+compatible Switch Vulkan header set and static NVK library supplied explicitly
+to CMake.  Keep that dependency external to the repository and do not commit
+driver build products or proprietary game shader assets.
+
 Keep two classes of problems separate when debugging:
 
 1. Vulkan API correctness
@@ -80,16 +97,19 @@ Keep two classes of problems separate when debugging:
 
 ## Renderer milestones
 
-1. Vulkan instance creation
-2. physical device selection
-3. VI surface creation
-4. swapchain creation
-5. clear screen
-6. one Rayman renderer frame
-7. menus
-8. gameplay
-9. movies
-10. long-running stability
+1. [x] VI ownership and software-framebuffer presentation probe
+2. [x] high-level Rayman D3D hook activity audit
+3. [ ] Vulkan/NVK dependency integrated
+4. [ ] Vulkan instance creation
+5. [ ] physical device selection
+6. [ ] `VK_NN_vi_surface` creation
+7. [ ] swapchain creation
+8. [ ] Vulkan clear screen
+9. [ ] one Rayman renderer frame
+10. [ ] menus
+11. [ ] gameplay
+12. [ ] movies
+13. [ ] long-running stability
 
 ## Platform split
 
