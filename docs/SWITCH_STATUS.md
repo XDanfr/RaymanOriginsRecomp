@@ -42,15 +42,15 @@ Legend:
 - [ ] thread priority / affinity policy
 - [ ] synchronization primitives
 - [ ] high-resolution timing
-- [ ] filesystem paths
-- [ ] file reads
+- [~] filesystem paths (game and writable data roots selected; hardware validation pending)
+- [~] file reads (desktop boot path validated with a complete extracted disc; Switch validation pending)
 - [ ] file mapping if required
 - [x] default XEX image decode/load and generated entry-point mapping
 - [~] XEX/XAM assumptions audited
-- [ ] crash/exception handling
+- [~] crash/exception handling (libnx exception dump written to `sdmc:/switch/RaymanOriginsRecomp/crash.log`)
 - [ ] unresolved import behaviour audited
 
-The current Switch executable is a bring-up launcher. Hardware validation confirmed that it starts through libnx, reserves a sparse 4 GB guest window, commits the generated image/lookup region plus a small dynamic test page, performs a guest-addressed read/write, initializes the sparse runtime heap, and creates a host pthread with a valid PPC PCR/TLS/TEB and guest stack.
+The current Switch executable is a bring-up launcher. Hardware validation confirmed that it starts through libnx, reserves a sparse 4 GB guest window, commits the generated image/lookup region plus a small dynamic test page, performs a guest-addressed read/write, initializes the sparse runtime heap, and creates a host pthread with a valid PPC PCR/TLS/TEB and guest stack. Before entering the guest it now verifies that several essential files exist beside `default.xex`; deploy the complete contents of the user's own extracted disc under `sdmc:/switch/RaymanOriginsRecomp/game/`, not only the XEX.
 
 The launcher was validated on HOS 22.5.0 with Atmosphère 1.11.2 in full-application mode. When using Sphaira through a forwarder, recreate the forwarder after updating Sphaira so its embedded NRO loader includes the current launch fixes.
 

@@ -6,7 +6,9 @@
 #include <switch.h>
 #undef PadState
 
+#include <array>
 #include <cstdio>
+#include <string>
 #include "loader.h"
 #include "memory.h"
 #include "kernel/memory_layout.h"
@@ -14,6 +16,45 @@
 
 namespace
 {
+bool ValidateGameData(const char* xexPath)
+{
+    const std::string path = xexPath;
+    const size_t separator = path.find_last_of("/\\");
+    const std::string root = separator == std::string::npos
+        ? std::string(".")
+        : path.substr(0, separator);
+
+    constexpr std::array<const char*, 4> requiredFiles = {
+        "localisation/localisation.loc",
+        "secure_fat.gf",
+        "bootsequence_X360.ipk",
+        "menus_X360.ipk",
+    };
+
+    bool complete = true;
+    for (const char* relativePath : requiredFiles)
+    {
+        const std::string fullPath = root + "/" + relativePath;
+        FILE* file = fopen(fullPath.c_str(), "rb");
+        if (file != nullptr)
+        {
+            fclose(file);
+            continue;
+        }
+
+        printf("Missing: %s\n", relativePath);
+        complete = false;
+    }
+
+    if (!complete)
+    {
+        printf("\nGame data is incomplete.\n");
+        printf("Copy the complete contents of your own extracted Xbox 360 disc to:\n");
+        printf("%s\n", root.c_str());
+    }
+    return complete;
+}
+
 void WaitForExit(bool reportGuestState = false)
 {
     bool finalStateReported = false;
@@ -130,6 +171,16 @@ int main(int argc, char** argv)
     printf("XEX image loaded: 0x%08X..0x%08X\n",
            image.base, image.base + image.size);
     printf("Generated entry mapping found: 0x%08X\n", image.entryPoint);
+
+    if (!ValidateGameData(xexPath))
+    {
+        consoleUpdate(nullptr);
+        WaitForExit();
+        consoleExit(nullptr);
+        return 1;
+    }
+
+    printf("Essential game data found.\n");
     printf("Initialising sparse guest runtime heap...\n");
     consoleUpdate(nullptr);
 

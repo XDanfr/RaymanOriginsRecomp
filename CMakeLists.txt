@@ -99,6 +99,7 @@ if (RAYMAN_RECOMP_SWITCH)
 
     add_executable(rayman_switch
         runtime/switch/main.cpp
+        runtime/switch/exception_handler.cpp
     )
     target_include_directories(rayman_switch PRIVATE
         runtime
