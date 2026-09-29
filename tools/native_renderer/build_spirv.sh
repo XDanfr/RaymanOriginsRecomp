@@ -4,19 +4,38 @@
 # game: keep it in private/).
 #
 # Usage: sh tools/native_renderer/build_spirv.sh [out dir]
-#   Needs: private/game (your dump), private/data/image.bin (tools/diag/imagedump),
+#   RAYMAN_GAME_DIR may point at an extracted disc outside the repository.
+#   Needs: $RAYMAN_GAME_DIR (or private/game), private/data/image.bin (tools/diag/imagedump),
 #   tools/forks/xenosrecomp built (XenosRecomp + its DXC binaries).
 set -e
 P=$(cd "$(dirname "$0")/../.." && pwd)
-OUT=${1:-$P/private/native/spirv}
+OUT=${1:-$P/private/native/spirv_ubo}
+GAME=${RAYMAN_GAME_DIR:-$P/private/game}
 X=$P/tools/forks/xenosrecomp
 DXC_DIR=$X/thirdparty/dxc-bin
-export DYLD_LIBRARY_PATH=$DXC_DIR/lib/arm64
-DXC=$DXC_DIR/bin/arm64/dxc-macos
+case $(uname -m) in
+    arm64) DXC_ARCH=arm64 ;;
+    x86_64) DXC_ARCH=x64 ;;
+    *) echo "unsupported macOS host architecture: $(uname -m)" >&2; exit 1 ;;
+esac
+export DYLD_LIBRARY_PATH=$DXC_DIR/lib/$DXC_ARCH
+DXC=$DXC_DIR/bin/$DXC_ARCH/dxc-macos
 WORK=$OUT/work
 mkdir -p "$OUT" "$WORK"
 
-"$P/tools/native_renderer/shaderprep" "$P/private/game/bootsequence_X360.ipk" "$P/private/data/image.bin" "$WORK"
+for required in \
+    "$P/tools/native_renderer/shaderprep" \
+    "$P/private/data/image.bin" \
+    "$GAME/bootsequence_X360.ipk" \
+    "$X/build/XenosRecomp/XenosRecomp" \
+    "$DXC"; do
+    if [ ! -f "$required" ]; then
+        echo "missing shader-build input: $required" >&2
+        exit 1
+    fi
+done
+
+"$P/tools/native_renderer/shaderprep" "$GAME/bootsequence_X360.ipk" "$P/private/data/image.bin" "$WORK"
 
 ok=0; skipped=0
 for bin in "$WORK"/*.bin; do

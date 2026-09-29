@@ -2,6 +2,7 @@
 
 #include "cpu/guest_context.h"
 #include "memory.h"
+#include "switch/native_renderer.h"
 
 #define XXH_INLINE_ALL
 #include <xxhash.h>
@@ -85,6 +86,7 @@ void RecordShader(uint32_t object, uint32_t function, bool vertex)
         std::lock_guard lock(g_mutex);
         g_shaders[object] = { hash, vertex };
     }
+    RegisterSwitchNativeShader(object, hash);
     fprintf(stderr, "[native] %s shader 0x%08X hash %016llX\n",
             vertex ? "vertex" : "pixel", object,
             static_cast<unsigned long long>(hash));
@@ -104,6 +106,8 @@ void RecordDraw(uint32_t entry, const PPCContext& ctx)
 
     const uint32_t vertexObject = LoadBE32(device + DEVICE_VERTEX_SHADER);
     const uint32_t pixelObject = LoadBE32(device + DEVICE_PIXEL_SHADER);
+
+    SubmitSwitchNativeDraw(entry, ctx);
 
     std::lock_guard lock(g_mutex);
     const uint64_t vertexHash = FindShaderHash(vertexObject);
@@ -176,6 +180,7 @@ PPC_FUNC(sub_826D7128)
 
 PPC_FUNC(sub_826D9588)
 {
+    SubmitSwitchNativeResolve(ctx);
     {
         std::lock_guard lock(g_mutex);
         g_resolves++;
@@ -185,6 +190,7 @@ PPC_FUNC(sub_826D9588)
 
 PPC_FUNC(sub_826D6B98)
 {
+    SubmitSwitchNativeClear(ctx);
     {
         std::lock_guard lock(g_mutex);
         g_clears++;
@@ -194,6 +200,7 @@ PPC_FUNC(sub_826D6B98)
 
 PPC_FUNC(sub_826D41B8)
 {
+    PresentSwitchNativeFrame();
     __imp__sub_826D41B8(ctx, base);
     FinishFrame();
 }

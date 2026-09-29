@@ -53,6 +53,7 @@ if (RAYMAN_RECOMP_SWITCH)
         runtime/apu/audio.cpp
         runtime/switch/platform.cpp
         runtime/switch/guest_bootstrap.cpp
+        runtime/switch/native_renderer.cpp
         runtime/switch/presenter.cpp
         runtime/switch/recomp_stubs.cpp
         tools/XenonRecomp/XenonUtils/image.cpp
@@ -80,6 +81,59 @@ if (RAYMAN_RECOMP_SWITCH)
     )
 
     target_link_libraries(RaymanSwitchRuntimeCore PRIVATE RaymanRecompLib)
+
+    # The Switch Vulkan driver is deliberately an external build input.  This
+    # repository must remain buildable for bootstrap/diagnostic work without
+    # NVK, while a complete nvk-switch package enables the real renderer.
+    set(RAYMAN_SWITCH_NVK_ROOT "" CACHE PATH
+        "Switch NVK SDK root (include/vulkan and lib/libvulkan.a)")
+    set(RAYMAN_SWITCH_NVK_LIBRARY "" CACHE FILEPATH
+        "Optional explicit path to the Switch NVK libvulkan.a")
+    if (RAYMAN_SWITCH_NVK_ROOT OR RAYMAN_SWITCH_NVK_LIBRARY)
+        if (NOT RAYMAN_SWITCH_NVK_ROOT)
+            get_filename_component(_RAYMAN_NVK_LIB_DIR "${RAYMAN_SWITCH_NVK_LIBRARY}" DIRECTORY)
+            get_filename_component(RAYMAN_SWITCH_NVK_ROOT "${_RAYMAN_NVK_LIB_DIR}/.." ABSOLUTE)
+        endif()
+        if (NOT RAYMAN_SWITCH_NVK_LIBRARY)
+            set(RAYMAN_SWITCH_NVK_LIBRARY
+                "${RAYMAN_SWITCH_NVK_ROOT}/lib/libvulkan.a")
+        endif()
+
+        set(_RAYMAN_NVK_HEADER
+            "${RAYMAN_SWITCH_NVK_ROOT}/include/vulkan/vulkan.h")
+        set(_RAYMAN_NVK_VI_HEADER
+            "${RAYMAN_SWITCH_NVK_ROOT}/include/vulkan/vulkan_vi.h")
+        foreach(_RAYMAN_NVK_INPUT IN ITEMS
+            "${_RAYMAN_NVK_HEADER}"
+            "${_RAYMAN_NVK_VI_HEADER}"
+            "${RAYMAN_SWITCH_NVK_LIBRARY}")
+            if (NOT EXISTS "${_RAYMAN_NVK_INPUT}")
+                message(FATAL_ERROR
+                    "Incomplete Switch NVK package: missing ${_RAYMAN_NVK_INPUT}")
+            endif()
+        endforeach()
+
+        set(_RAYMAN_SWITCH_PORTLIB_DIR "${DEVKITPRO}/portlibs/switch/lib")
+        foreach(_RAYMAN_PORTLIB IN ITEMS z zstd expat)
+            if (NOT EXISTS "${_RAYMAN_SWITCH_PORTLIB_DIR}/lib${_RAYMAN_PORTLIB}.a")
+                message(FATAL_ERROR
+                    "Switch NVK needs ${_RAYMAN_SWITCH_PORTLIB_DIR}/lib${_RAYMAN_PORTLIB}.a")
+            endif()
+        endforeach()
+
+        target_sources(RaymanSwitchRuntimeCore PRIVATE
+            tools/native_renderer/thirdparty/volk/volk.c
+        )
+        target_include_directories(RaymanSwitchRuntimeCore PRIVATE
+            ${RAYMAN_SWITCH_NVK_ROOT}/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/native_renderer
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/native_renderer/thirdparty/volk
+        )
+        target_compile_definitions(RaymanSwitchRuntimeCore PRIVATE
+            RAYMAN_SWITCH_NATIVE_VULKAN=1
+            VK_USE_PLATFORM_VI_NN=1
+        )
+    endif()
 
     # The generated mapping references every XEX import, including imports that
     # are intentionally unsupported during bring-up.  Keep the same weak
@@ -125,8 +179,32 @@ if (RAYMAN_RECOMP_SWITCH)
         RaymanImportFallbacks
         RaymanSwitchRuntimeCore
         "-Wl,--end-group"
-        nx
     )
+
+    if (RAYMAN_SWITCH_NVK_ROOT OR RAYMAN_SWITCH_NVK_LIBRARY)
+        target_link_options(rayman_switch PRIVATE
+            "LINKER:--wrap=vk_icdGetInstanceProcAddr"
+            "LINKER:--wrap=open"
+            "LINKER:--wrap=close"
+            "LINKER:--wrap=stat"
+            "LINKER:--wrap=lstat"
+            "LINKER:--allow-multiple-definition"
+        )
+        target_link_libraries(rayman_switch PRIVATE
+            "-Wl,--start-group"
+            ${RAYMAN_SWITCH_NVK_LIBRARY}
+            z
+            zstd
+            expat
+            nx
+            m
+            dl
+            pthread
+            "-Wl,--end-group"
+        )
+    else()
+        target_link_libraries(rayman_switch PRIVATE nx)
+    endif()
 
     find_program(RAYMAN_ELF2NRO elf2nro
         HINTS

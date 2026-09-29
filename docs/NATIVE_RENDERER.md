@@ -58,6 +58,21 @@ tools/diag/build.sh && tools/diag/imagedump private/game/default.xex private/dat
 sh tools/native_renderer/build_spirv.sh      # -> private/native/spirv_ubo/<HASH>_{vs,ps}.spv
 ```
 
+The game dump does not need to be copied into the repository. On macOS, an
+external extracted-disc directory can be selected explicitly:
+
+```sh
+RAYMAN_GAME_DIR='/path/to/extracted-disc' \
+  sh tools/native_renderer/build_spirv.sh
+```
+
+The script selects the bundled DXC binary for the host architecture (`x64` on
+Intel Macs and `arm64` on Apple Silicon). The Switch hardware shader audit
+currently sees 34 unique shaders; all 34 were found in the extracted inputs
+and converted successfully. Some additional shader containers in the game
+cannot currently be converted by XenosRecomp, but none of those appeared in
+the sustained 2,700-frame Switch trace.
+
 The output is derived from the game: it stays in `private/`.
 
 ## Run

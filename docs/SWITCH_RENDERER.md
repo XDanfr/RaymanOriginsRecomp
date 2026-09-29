@@ -90,6 +90,42 @@ compatible Switch Vulkan header set and static NVK library supplied explicitly
 to CMake.  Keep that dependency external to the repository and do not commit
 driver build products or proprietary game shader assets.
 
+The integration now has an explicit, opt-in build boundary modelled on the NX
+reference ports. A relocatable NVK package must contain:
+
+```text
+<nvk-root>/include/vulkan/vulkan.h
+<nvk-root>/include/vulkan/vulkan_vi.h
+<nvk-root>/lib/libvulkan.a
+```
+
+The archive must expose the loaderless ICD and libc wrapper symbols used by
+the Switch NVK package, and the devkitPro installation must supply Switch
+builds of zlib, zstd, and expat. Validate it before configuring:
+
+```sh
+sh tools/check_switch_nvk.sh /path/to/nvk-switch
+
+DEVKITPRO=/opt/devkitpro cmake --preset switch-devkitA64 \
+  -DRAYMAN_SWITCH_NVK_ROOT=/path/to/nvk-switch
+DEVKITPRO=/opt/devkitpro cmake --build --preset switch-devkitA64
+```
+
+Without `RAYMAN_SWITCH_NVK_ROOT`, the known-good software diagnostic presenter
+is built exactly as before. With it, the Switch runtime compiles the shared
+native Vulkan renderer, creates a `VK_NN_vi_surface` from libnx's default
+`NWindow`, reads shaders from
+`sdmc:/switch/RaymanOriginsRecomp/shaders/<HASH>_{vs,ps}.spv`, and routes the
+captured draw, clear, resolve, and present calls into that renderer. If Vulkan
+initialisation fails on-device, the runtime restores the diagnostic path and
+records the failing stage in `runtime.log`.
+
+The local shader preparation audit is complete: the 34 unique shaders seen in
+the 2,700-frame hardware trace all have valid SPIR-V output. The current Mac
+still lacks `libvulkan.a` and the three Switch portlibs, so the NVK-enabled ELF
+has not yet been linked or run. Those external dependencies are the remaining
+gate to the first Vulkan clear/Rayman-frame hardware test.
+
 Keep two classes of problems separate when debugging:
 
 1. Vulkan API correctness
@@ -99,7 +135,7 @@ Keep two classes of problems separate when debugging:
 
 1. [x] VI ownership and software-framebuffer presentation probe
 2. [x] high-level Rayman D3D hook activity audit
-3. [ ] Vulkan/NVK dependency integrated
+3. [ ] Vulkan/NVK dependency integrated (contract and renderer bridge implemented; external package still required)
 4. [ ] Vulkan instance creation
 5. [ ] physical device selection
 6. [ ] `VK_NN_vi_surface` creation

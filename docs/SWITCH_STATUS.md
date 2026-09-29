@@ -77,6 +77,9 @@ The launcher was validated on HOS 22.5.0 with Atmosphère 1.11.2 in full-applica
 ## Graphics
 
 - [ ] existing native renderer compiles for Switch
+- [x] all 34 shaders observed in the sustained Switch trace have valid local SPIR-V output
+- [x] optional NVK package contract and Rayman draw/clear/resolve/present bridge implemented
+- [ ] NVK-enabled Switch ELF links against an externally supplied driver package
 - [ ] Vulkan loader path works
 - [ ] NVK is detected
 - [x] Switch VI presentation path (animated libnx software-framebuffer probe validated on hardware)

@@ -18,6 +18,7 @@
 #include "memory.h"
 #include "kernel/memory_layout.h"
 #include "switch/guest_bootstrap.h"
+#include "switch/native_renderer.h"
 #include "switch/presenter.h"
 
 namespace
@@ -284,6 +285,10 @@ int main(int argc, char** argv)
     svcSleepThread(100'000'000);
 
     InitNativeGraphicsHooks();
+    if (InitSwitchNativeRenderer())
+        fprintf(stderr, "[switch] renderer Vulkan/NVK inicializado\n");
+    else
+        fprintf(stderr, "[switch] renderer Vulkan indisponível; usando apresentação diagnóstica\n");
     RunGuestEntry();
     WaitForExit(true);
     const bool presentationOwnedDisplay = SwitchPresentationOwnsDisplay();

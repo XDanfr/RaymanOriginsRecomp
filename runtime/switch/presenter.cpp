@@ -15,6 +15,7 @@
 #include <unistd.h>
 
 #include "memory.h"
+#include "switch/native_renderer.h"
 
 namespace
 {
@@ -249,6 +250,8 @@ void SubmitSwitchPresentationFrame(
 
 void PumpSwitchPresentation()
 {
+    if (SwitchNativeRendererActive())
+        return;
     if (g_failed)
         return;
 
@@ -282,5 +285,5 @@ void ShutdownSwitchPresentation()
 
 bool SwitchPresentationOwnsDisplay()
 {
-    return g_active;
+    return g_active || SwitchNativeRendererActive();
 }
