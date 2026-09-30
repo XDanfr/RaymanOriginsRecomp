@@ -106,7 +106,11 @@ reference ports. A relocatable NVK package must contain:
 The archive must expose the loaderless ICD and libc wrapper symbols used by
 the Switch NVK package. Its zlib, zstd, expat, and libdl dependencies may be
 shipped in the package as above, or supplied by the host devkitPro installation
-under `portlibs/switch/lib`. Validate the complete package before configuring:
+under `portlibs/switch/lib`. CMake links the merged `libvulkan.a` as a whole
+archive: Mesa's generated entrypoint tables use weak references, so ordinary
+static-archive extraction can silently discard required WSI implementation
+objects while still producing a linkable executable. Validate the complete
+package before configuring:
 
 ```sh
 sh tools/check_switch_nvk.sh /path/to/nvk-switch

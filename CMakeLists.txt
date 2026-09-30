@@ -208,7 +208,13 @@ if (RAYMAN_RECOMP_SWITCH)
         )
         target_link_libraries(rayman_switch PRIVATE
             "-Wl,--start-group"
+            # The merged NVK archive contains Mesa entrypoint tables whose
+            # driver/common implementations are referenced weakly.  Ordinary
+            # archive extraction drops those members and leaves null WSI
+            # callbacks (for example vkGetPhysicalDeviceProperties2).
+            "-Wl,--whole-archive"
             ${RAYMAN_SWITCH_NVK_LIBRARY}
+            "-Wl,--no-whole-archive"
             ${_RAYMAN_SWITCH_NVK_PORTLIBS}
             nx
             m
