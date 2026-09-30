@@ -97,11 +97,16 @@ reference ports. A relocatable NVK package must contain:
 <nvk-root>/include/vulkan/vulkan.h
 <nvk-root>/include/vulkan/vulkan_vi.h
 <nvk-root>/lib/libvulkan.a
+<nvk-root>/lib/libz.a
+<nvk-root>/lib/libzstd.a
+<nvk-root>/lib/libexpat.a
+<nvk-root>/lib/libdl.a
 ```
 
 The archive must expose the loaderless ICD and libc wrapper symbols used by
-the Switch NVK package, and the devkitPro installation must supply Switch
-builds of zlib, zstd, and expat. Validate it before configuring:
+the Switch NVK package. Its zlib, zstd, expat, and libdl dependencies may be
+shipped in the package as above, or supplied by the host devkitPro installation
+under `portlibs/switch/lib`. Validate the complete package before configuring:
 
 ```sh
 sh tools/check_switch_nvk.sh /path/to/nvk-switch
@@ -121,10 +126,10 @@ initialisation fails on-device, the runtime restores the diagnostic path and
 records the failing stage in `runtime.log`.
 
 The local shader preparation audit is complete: the 34 unique shaders seen in
-the 2,700-frame hardware trace all have valid SPIR-V output. The current Mac
-still lacks `libvulkan.a` and the three Switch portlibs, so the NVK-enabled ELF
-has not yet been linked or run. Those external dependencies are the remaining
-gate to the first Vulkan clear/Rayman-frame hardware test.
+the 2,700-frame hardware trace all have valid SPIR-V output. A Mesa 25.0.7 NVK
+package can be built outside this repository with the Switch NVK project's
+official container and supplied through `RAYMAN_SWITCH_NVK_ROOT`. Driver build
+products and game shader assets remain external and must not be committed.
 
 Keep two classes of problems separate when debugging:
 
@@ -135,7 +140,7 @@ Keep two classes of problems separate when debugging:
 
 1. [x] VI ownership and software-framebuffer presentation probe
 2. [x] high-level Rayman D3D hook activity audit
-3. [ ] Vulkan/NVK dependency integrated (contract and renderer bridge implemented; external package still required)
+3. [x] Vulkan/NVK dependency integrated and NVK-enabled NRO linked locally
 4. [ ] Vulkan instance creation
 5. [ ] physical device selection
 6. [ ] `VK_NN_vi_surface` creation

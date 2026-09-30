@@ -113,11 +113,27 @@ if (RAYMAN_RECOMP_SWITCH)
             endif()
         endforeach()
 
-        set(_RAYMAN_SWITCH_PORTLIB_DIR "${DEVKITPRO}/portlibs/switch/lib")
-        foreach(_RAYMAN_PORTLIB IN ITEMS z zstd expat)
-            if (NOT EXISTS "${_RAYMAN_SWITCH_PORTLIB_DIR}/lib${_RAYMAN_PORTLIB}.a")
+        # Prefer a self-contained NVK package.  This is useful when the driver
+        # was built in its official container but the host devkitPro install
+        # does not include the Switch portlibs repository.  Fall back to the
+        # conventional devkitPro location for packages assembled that way.
+        set(_RAYMAN_SWITCH_NVK_PORTLIBS "")
+        foreach(_RAYMAN_PORTLIB IN ITEMS z zstd expat dl)
+            set(_RAYMAN_PACKAGED_PORTLIB
+                "${RAYMAN_SWITCH_NVK_ROOT}/lib/lib${_RAYMAN_PORTLIB}.a")
+            set(_RAYMAN_SYSTEM_PORTLIB
+                "${DEVKITPRO}/portlibs/switch/lib/lib${_RAYMAN_PORTLIB}.a")
+            if (EXISTS "${_RAYMAN_PACKAGED_PORTLIB}")
+                list(APPEND _RAYMAN_SWITCH_NVK_PORTLIBS
+                    "${_RAYMAN_PACKAGED_PORTLIB}")
+            elseif (EXISTS "${_RAYMAN_SYSTEM_PORTLIB}")
+                list(APPEND _RAYMAN_SWITCH_NVK_PORTLIBS
+                    "${_RAYMAN_SYSTEM_PORTLIB}")
+            else()
                 message(FATAL_ERROR
-                    "Switch NVK needs ${_RAYMAN_SWITCH_PORTLIB_DIR}/lib${_RAYMAN_PORTLIB}.a")
+                    "Switch NVK needs lib${_RAYMAN_PORTLIB}.a in "
+                    "${RAYMAN_SWITCH_NVK_ROOT}/lib or "
+                    "${DEVKITPRO}/portlibs/switch/lib")
             endif()
         endforeach()
 
@@ -193,12 +209,9 @@ if (RAYMAN_RECOMP_SWITCH)
         target_link_libraries(rayman_switch PRIVATE
             "-Wl,--start-group"
             ${RAYMAN_SWITCH_NVK_LIBRARY}
-            z
-            zstd
-            expat
+            ${_RAYMAN_SWITCH_NVK_PORTLIBS}
             nx
             m
-            dl
             pthread
             "-Wl,--end-group"
         )

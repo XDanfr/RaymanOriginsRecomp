@@ -2,7 +2,10 @@
 /* clang-format off */
 #include "volk.h"
 
-#ifdef _WIN32
+#if defined(__SWITCH__)
+	/* The Switch build always uses volkInitializeCustom with the loaderless
+	 * NVK ICD. Horizon has no dlopen/dlsym API. */
+#elif defined(_WIN32)
 	typedef const char* LPCSTR;
 	typedef struct HINSTANCE__* HINSTANCE;
 	typedef HINSTANCE HMODULE;
@@ -72,7 +75,10 @@ static PFN_vkVoidFunction nullProcAddrStub(void* context, const char* name)
 
 VkResult volkInitialize(void)
 {
-#if defined(_WIN32)
+#if defined(__SWITCH__)
+	void* module = NULL;
+	return VK_ERROR_INITIALIZATION_FAILED;
+#elif defined(_WIN32)
 	HMODULE module = LoadLibraryA("vulkan-1.dll");
 	if (!module)
 		return VK_ERROR_INITIALIZATION_FAILED;
@@ -128,7 +134,9 @@ void volkFinalize(void)
 {
 	if (loadedModule)
 	{
-#if defined(_WIN32)
+#if defined(__SWITCH__)
+		/* Loaderless ICD: volk never owns a module handle. */
+#elif defined(_WIN32)
 		FreeLibrary((HMODULE)loadedModule);
 #else
 		dlclose(loadedModule);

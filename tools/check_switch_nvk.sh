@@ -23,10 +23,16 @@ for required in "$HEADER" "$VI_HEADER" "$LIBRARY" "$NM"; do
     fi
 done
 
-for name in z zstd expat; do
-    library=$DEVKIT/portlibs/switch/lib/lib$name.a
-    if [ ! -f "$library" ]; then
-        echo "missing Switch portlib required by NVK: $library" >&2
+for name in z zstd expat dl; do
+    packaged=$ROOT/lib/lib$name.a
+    system=$DEVKIT/portlibs/switch/lib/lib$name.a
+    if [ -f "$packaged" ]; then
+        :
+    elif [ -f "$system" ]; then
+        :
+    else
+        echo "missing Switch portlib required by NVK: lib$name.a" >&2
+        echo "  checked $ROOT/lib and $DEVKIT/portlibs/switch/lib" >&2
         exit 1
     fi
 done
@@ -56,4 +62,4 @@ echo "Switch NVK package OK"
 echo "  root: $ROOT"
 echo "  archive: $LIBRARY"
 echo "  VI surface and loaderless ICD shims: present"
-echo "  zlib, zstd and expat Switch portlibs: present"
+echo "  zlib, zstd, expat and libdl Switch archives: present"
