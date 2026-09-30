@@ -17,7 +17,11 @@ animated diagnostic colour bars.  It also hooks Rayman's high-level D3D
 shader, draw, clear, resolve, and present entry points and records their
 activity in `runtime.log`. Once the console is released, stdout is redirected
 to that log so later diagnostics cannot call into libnx's retired software
-console renderer. This validates VI ownership and the native-renderer
+console renderer. The NVK path performs that redirection immediately after
+`consoleExit`, before entering WSI: the Switch WSI prints swapchain diagnostics
+to stdout, and delaying the redirect until after renderer initialization would
+make libnx draw those messages through an already released framebuffer. This
+validates VI ownership and the native-renderer
 hook boundary on hardware; it does **not** render the game or replace the
 Vulkan renderer.
 
@@ -145,9 +149,9 @@ Keep two classes of problems separate when debugging:
 1. [x] VI ownership and software-framebuffer presentation probe
 2. [x] high-level Rayman D3D hook activity audit
 3. [x] Vulkan/NVK dependency integrated and NVK-enabled NRO linked locally
-4. [ ] Vulkan instance creation
-5. [ ] physical device selection
-6. [ ] `VK_NN_vi_surface` creation
+4. [x] Vulkan instance creation
+5. [x] physical device selection and logical device creation
+6. [x] `VK_NN_vi_surface` creation
 7. [ ] swapchain creation
 8. [ ] Vulkan clear screen
 9. [ ] one Rayman renderer frame

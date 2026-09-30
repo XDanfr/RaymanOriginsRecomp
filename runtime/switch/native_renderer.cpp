@@ -141,6 +141,18 @@ bool InitSwitchNativeRenderer()
     consoleUpdate(nullptr);
     consoleExit(nullptr);
 
+    // NVK's Switch WSI emits diagnostics while it creates the swapchain. Once
+    // consoleExit has released the software console framebuffer, any write to
+    // stdout would make libnx draw through that retired framebuffer. Redirect
+    // before invoking any window-system or Vulkan code so those messages are
+    // captured by runtime.log instead.
+    if (!RedirectStdout())
+    {
+        consoleInit(nullptr);
+        fprintf(stderr, "[vulkan] não consegui redirecionar stdout\n");
+        return false;
+    }
+
     NWindow* window = nwindowGetDefault();
     if (window == nullptr)
     {
@@ -192,14 +204,6 @@ bool InitSwitchNativeRenderer()
             DISPLAY_HEIGHT))
     {
         fprintf(stderr, "[vulkan] inicialização falhou: %s\n", renderer->error().c_str());
-        delete renderer;
-        consoleInit(nullptr);
-        return false;
-    }
-
-    if (!RedirectStdout())
-    {
-        fprintf(stderr, "[vulkan] não consegui redirecionar stdout\n");
         delete renderer;
         consoleInit(nullptr);
         return false;

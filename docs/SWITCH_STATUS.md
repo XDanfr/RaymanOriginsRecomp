@@ -80,8 +80,8 @@ The launcher was validated on HOS 22.5.0 with Atmosphère 1.11.2 in full-applica
 - [x] all 34 shaders observed in the sustained Switch trace have valid local SPIR-V output
 - [x] optional NVK package contract and Rayman draw/clear/resolve/present bridge implemented
 - [x] NVK-enabled Switch ELF and NRO link against an external Mesa 25.0.7 NVK package
-- [ ] Vulkan loader path works
-- [ ] NVK is detected
+- [x] Vulkan loader path works
+- [x] NVK is detected (`NVIDIA Tegra X1 (NVK GM20B)` on hardware)
 - [x] Switch VI presentation path (animated libnx software-framebuffer probe validated on hardware)
 - [ ] swapchain created
 - [x] native renderer hook boundary (shader/draw/clear/resolve/present audit validated on hardware)
